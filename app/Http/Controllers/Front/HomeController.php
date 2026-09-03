@@ -42,12 +42,11 @@ use App\Models\ProductVariantCombination;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
 
+
 class HomeController extends Controller
 {
     public function index()
     {    
-        //  try {
-        //autologin via cooke start
         $cookie = Cookie::get('auto_login');
         if ($cookie) {
             $userId = decrypt($cookie);
@@ -55,46 +54,17 @@ class HomeController extends Controller
             if ($user) {
                 Auth::guard('customer')->login($user);
             } else {
-                // Invalid user ID in cookie — remove cookie
                 Cookie::queue(Cookie::forget('auto_login'));
             }
         }
-        //autologin via cooke end
         $isWishlisteddata = [];
-        $banners = Cache::remember('home_banners', 3600, function () {
-            return Banner::where('is_active', 1)
-                ->where('show_on_home_banner', 1)
-                ->get();
-        });
-        
-        $offerbanners = Banner::where(['is_active' => 1])->where('show_on_home_offer_banner', 1)->get();
-        $settings = Setting::where(['key' => 'Homepage.seo'])->first();
-        $category = Category::where(['is_active' => 1])
-        ->where(['show_on_menu' => 1])
-        ->where('category_type_id', '!=', 1)
-        ->whereNull('parent_id')
-        ->where("is_deleted",  0)
-        ->with(['subcategories' => function ($query) {
-                $query->orderBy('category_order', 'ASC');
-        }])->get();
-        // $allProduct = Product::where("is_deleted",  0)->get();
-        $allProduct = [];
-        $testimonials = Testimonial::where(['is_active' => 1])->get();
-        
-        $blogs = Blog::where(['is_active' => 1])->where(['show_home' => 1])->get();
-        
         $new_arrivals_product = Product::where('is_new_arrivals', 1)->where("is_deleted",  0)->where(['is_active' => 1])->where(['is_new_arrivals' => true, 'draf' => false])->orderBy('id', 'desc')->get();
-        $womencategory = Category::select('name', 'image', 'url', 'slug')->where(['is_active' => 1])->where('parent_id', 1)->where(['show_on_home' => 1])->where("is_deleted",  0)->orderBy('priority')->limit(5)->get();
-        $mencategory = Category::select('name', 'image', 'url', 'slug')->where(['is_active' => 1])->whereIn('parent_id', [2, 3])->where(['show_on_home' => 1])->where("is_deleted",  0)->orderBy('priority')->limit(4)->get();
 
-        //collection show on home page if colloction has product
         $collectionCat = Category::select('name', 'image', 'url', 'slug', 'id')
             ->where("is_deleted",  0)
             ->where(['is_active' => 1])
             ->where('category_type_id', 1)
             ->where('show_on_home',1)
-            // ->whereHas('category_with_product')
-            //->with('category_with_product')
             ->orderBy('id', 'desc')->limit(5)->get();
 
         $categoryList = Category::select('name', 'image', 'url', 'slug', 'id')
@@ -102,16 +72,8 @@ class HomeController extends Controller
             ->where(['is_active' => 1])
             ->where('category_type_id', 2)
             ->where('show_on_home',1)
-            // ->whereHas('category_with_product')
-            //->with('category_with_product')
             ->orderBy('id', 'desc')->limit(5)->get();
-        
-        $categoryIds = Category::where('is_active', 1)->where('is_deleted', 0)->where('category_type_id', 1)->pluck('id')->toArray();
-        $collectionProd = Product::where("is_deleted", 0)->where('is_active', 1)->whereIn('main_category_id', $categoryIds)->get();
-        $twoCollection = ProductCollection::where('collection_type', 'women')->limit(2)->get();
-        $thCollection = ProductCollection::where('collection_type', 'women')->skip(2)->first();
-        $forCollection = ProductCollection::where('collection_type', 'women')->skip(3)->limit(2)->get();
-        $tfCollection = ProductCollection::where('collection_type', 'man')->limit(4)->get();
+
         $bestproduct = Product::where("is_deleted",  0)->where(['is_active' => 1])->where(['draf' => false, 'best_seller' => 1])->orderBy('id', 'desc')->get();
         $user = Auth::guard('customer')->user();
         if ($user) {
@@ -131,26 +93,16 @@ class HomeController extends Controller
             ->where("is_deleted",  0)
             ->where(['is_active' => 1])
             ->where('category_type_id', 2)
-            // ->whereHas('category_with_product')
-            //->with('category_with_product')
             ->orderBy('id', 'desc')->limit(5)->get();
         
         $homeBanner =  Banner::where('is_active', 1)->where('show_on_home_banner', 1)->get();
-
         $aboutUsContent = Setting::where('key', 'Homepage.about_footer')->orderBy('id', 'ASC')->first();
-
         $blogs =  Blog::where('is_active', 1)->where('show_home', 1)->get();
-
         $testimonials =  Testimonial::where('is_active', 1)->get();
-
-        // The Company 
         $bookAppointmentContent = FooterCategory::with('subcategories')->where('id', 5)->firstOrFail();
         
-        return view('front.modules.home.index', compact('banners', 'category', 'offerbanners', 'testimonials', 'blogs', 'new_arrivals_product', 'twoCollection', 'thCollection', 'forCollection', 'tfCollection', 'allProduct', 'settings', 'bestproduct', 'womencategory', 'mencategory', 'isWishlisteddata', 'collectionCat', 'collectionProd', 'referralCode','homeBanner','aboutUsContent','blogs','testimonials','bookAppointmentContent','categoryShop','categoryList'));
-        // } catch (Exception $e) {
-        //     Log::error($e);
-        //     return redirect()->back()->with(['error' => 'Something is wrong', 'error_msg' => $e->getMessage()]);
-        // }
+        return view('front.modules.home.index', compact('testimonials', 'blogs', 'new_arrivals_product','bestproduct','isWishlisteddata', 'collectionCat',  'referralCode','homeBanner','aboutUsContent','blogs','bookAppointmentContent','categoryShop','categoryList'));
+      
     }
     public function indexNew()
     {
@@ -973,23 +925,6 @@ class HomeController extends Controller
         ]);
     }
 
-    /*public function giftStore(Request $request)
-    {
-        $request->validate([
-            'resiver_name' => 'required|string|max:100',
-            'message'      => 'nullable|string|max:255',
-            'sender_name'  => 'required|string|max:100',
-        ]);
-
-        GiftWrap::create([
-            'receiver_name' => $request->resiver_name,
-            'message'       => $request->message,
-            'sender_name'   => $request->sender_name,
-        ]);
-
-        return back()->with('success', 'Gift details saved successfully!');
-    }*/
-
     public function checkoutBag()
     {   
         try {
@@ -1101,22 +1036,6 @@ class HomeController extends Controller
         $order = Order::find($PrdId);
         return view('front.order-confirm', compact('order'));
     }
-
-    /*public function productSearch(Request $request)
-    {
-        $query = $request->input('query');
-        $products = Product::where('name', 'LIKE', "%{$query}%")
-            ->take(6)
-            ->get();
-            
-            $categorys = Category::where('name', 'LIKE', "%{$query}%")
-            ->take(6)
-            ->get();
-        $html = view('front.modules.home.product-search', compact('products','categorys'))->render();
-
-        return response()->json(['html' => $html]);
-    }*/
-
 
     public function productSearch(Request $request)
     {
