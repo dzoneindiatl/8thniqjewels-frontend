@@ -275,6 +275,7 @@ class CheckoutController extends Controller
         } elseif ($request->payment_mode == 'razorpay') {
             $cartNotes = $request->cartItems;
             session()->put('cart_items', $cartNotes);
+            session()->put('checkout_ip_address', $ip_address);
             $post_fields = [
                 "amount" => $request->sub_total * 100,
                 "currency" => "INR",
@@ -402,6 +403,7 @@ class CheckoutController extends Controller
                 $wAmount = $latestPayment['notes']['wallet_amount'] ?? 0;
                 $payAmount = $latestPayment['amount'] / 100;
                 $totalAmt = $payAmount + $wAmount;
+                $ip_address = session()->get('checkout_ip_address', $request->ip());
                 // Create the order in Laravel
                 $order_id = $this->createOrder(
                     $ip_address,
@@ -427,6 +429,7 @@ class CheckoutController extends Controller
                 ]);
 
                 session()->forget('cart_items');
+                session()->forget('checkout_ip_address');
 
                 return redirect()->route('front-order.success', ['order_id' => encrypt($order_id)]);
             }

@@ -5,32 +5,16 @@ $('.mini-cart-btn').on('click', function () {
     displayCartItems(notRequiredQtyAjaxClickonQtyBtn);
 });
 
-function getSelectedVariants(cartItems = []) {
+function getSelectedVariants() {
     let selected = {};
 
-    const productId = $('#product_id').val();
-
-    // $('li.active[data-type]').each(function () {
     $('.s-variant.active').each(function () {
         let type = $(this).data('type').toLowerCase();
         let value = $(this).data('value');
         selected[type] = value;
     });
 
-    let exists = cartItems.some(item => {
-        if (item.productId != productId) return false;
-
-        let variant = item.selectedVariants || {};
-        let keys1 = Object.keys(selected);
-        let keys2 = Object.keys(variant);
-
-        if (keys1.length !== keys2.length) return false;
-
-        return keys1.every(k => variant[k] === selected[k]);
-    });
-
-
-    return exists ? null : selected;
+    return selected;
 }
 
 $(document).on('click', '.addToCartBtn', function () {  
@@ -46,25 +30,32 @@ $(document).on('click', '.addToCartBtn', function () {
     let discountType = button.data('discounttype');
     let discountAmount = button.data('discount');
     let rawTaxArr = button.attr('data-tax-arr');
-    let quantity = $("#quantityInputBox").val() || 1;
+    let quantity = parseInt($("#quantityInputBox").val(), 10) || 1;
     let cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
 
 
     $('#addtocatt').show();
-    var selectedVariants = {};
-    // For not not valirent or color attribute
-    selectedVariants = getSelectedVariants(cartItems);
-    // if (!selectedVariants) {
-    //     let modal = new bootstrap.Modal(document.getElementById('addtocatt'));
-    //     modal.show();
-    //     return;
-    // }
+    let selectedVariants = getSelectedVariants();
 
-    if ($('li[data-type="size"]').length && !selectedVariants['size']) {
+    if ($('li[data-type="size"]').length && !selectedVariants.size) {
          alert("Please select a size.");
          return;
     }
     console.log('selectedVariants 123 : '+selectedVariants);
+
+    let existingItem = cartItems.find(item => item.productId == productId);
+    if (existingItem) {
+        existingItem.quantity = quantity;
+        existingItem.total = parseFloat(existingItem.price) * quantity;
+        localStorage.setItem('cartItems', JSON.stringify(cartItems));
+        localStorage.setItem('applied_coupon', []);
+        localStorage.setItem('coupon_discount', 0);
+        isLoginUser(existingItem.productId, quantity, existingItem.selectedVariants || {});
+        displayCartItems(true);
+        $('#addtocatt').show();
+        return;
+    }
+
     let productData = {
         randomId: 'prod_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
         productId,
@@ -85,20 +76,6 @@ $(document).on('click', '.addToCartBtn', function () {
     $('.addToCartText').html("Go To Cart");
     if (isLoggedIn) {
         isLoginUser(productData.productId, quantity, selectedVariants);
-    }
-
-    let isExist = cartItems.some(item => 
-        item.productId == productId 
-       // && JSON.stringify(item.selectedVariants) === JSON.stringify(selectedVariants)
-    );
-
-    if (isExist) {
-        //showFlashMessage("This product with selected options is already in your cart.");
-        console.log('first');
-        var notRequiredQtyAjaxClickonQtyBtn = true;
-        displayCartItems(notRequiredQtyAjaxClickonQtyBtn);
-        $('#addtocatt').show();
-        return; // Stop here, don’t add duplicate
     }
 
     console.log("Product added to cart successfully");
@@ -144,6 +121,7 @@ function displayCartItems(notRequiredQtyAjaxClickonQtyBtn) {
     cartItems.forEach(function (item, index) {
     // $.each(cartItems, function(index, item) {
         let variants = item.selectedVariants || {};
+        console.log("Log Line no 124",variants);
         let product_sku = item.name.toLowerCase();
 
         let variantHTML = '';
@@ -158,10 +136,12 @@ function displayCartItems(notRequiredQtyAjaxClickonQtyBtn) {
         //  sku accoring to variant && product type 
         let variant_sku = product_sku;
         if(item.productType==2){
-            variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
+            // variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
+            variant_sku = product_sku + '_' + variants.color.toLowerCase();
+
         }
         //  sku accoring to variant && product type
-        
+            
         var is_out_stock = '';
         $.ajax({
             url: isOutOfStock,
@@ -622,15 +602,11 @@ function displayWishlistItem() {
 $(document).off('click', '.addToNewQtyBtn, .addToDecQtyBtn').on('click', '.addToNewQtyBtn, .addToDecQtyBtn', function (e) {
     e.preventDefault();
     var input = $(this).closest('.input-increment').find('.quantityInputs');
-    var randomId = input.data('randomid');
     var cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+    var existingItemIndex = parseInt($(this).closest('.cart-lists').data('index'), 10);
 
-    var existingItemIndex = cartItems.findIndex(function (item) {
-        return item.randomId == randomId;
-    });
-
-    if (existingItemIndex > -1) {
-        var currentQty = parseInt(cartItems[existingItemIndex].quantity);
+    if (Number.isInteger(existingItemIndex) && cartItems[existingItemIndex]) {
+        var currentQty = parseInt(cartItems[existingItemIndex].quantity, 10) || 1;
         var minQty = parseInt(input.attr('min')) || 1;
         var maxQty = parseInt(input.attr('max')) || 10;
 
@@ -645,6 +621,9 @@ $(document).off('click', '.addToNewQtyBtn, .addToDecQtyBtn').on('click', '.addTo
         cartItems[existingItemIndex].quantity = currentQty;
         isLoginUser(cartItems[existingItemIndex].productId, currentQty, cartItems[existingItemIndex].selectedVariants);
         cartItems[existingItemIndex].total = parseFloat(cartItems[existingItemIndex].price) * currentQty;
+    } else {
+        console.error('Unable to update cart quantity: cart item not found.');
+        return;
     }
 
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -754,4 +733,3 @@ function getCoupon() {
         }
     });
 }
-
