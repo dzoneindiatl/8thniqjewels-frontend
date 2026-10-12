@@ -576,7 +576,6 @@ $(document).on('click', '.close-product', function () {
 
 $(document).off('click', '.addtoWishList').on('click', '.addtoWishList', function () {
     const productId = this.getAttribute('data-product-id');
-    const heartIcon = this.querySelector('i');
 
     if (!isLoggedIn) {
         const loginModal = new bootstrap.Modal(document.getElementById('login'));
@@ -599,12 +598,12 @@ $(document).off('click', '.addtoWishList').on('click', '.addtoWishList', functio
         .then(data => {
             if (data.status === 'added') {
                 showFlashMessage("Product added in wishlist");
-                heartIcon.classList.remove('fa-regular');
-                heartIcon.classList.add('fa-solid');
+                this.classList.add('is-wishlisted');
+                this.closest('.wishlist')?.classList.add('wishlist-visible');
             } else if (data.status === 'removed') {
                 showFlashMessage("Product remove in wishlist", "warning");
-                heartIcon.classList.remove('fa-solid');
-                heartIcon.classList.add('fa-regular');
+                this.classList.remove('is-wishlisted');
+                this.closest('.wishlist')?.classList.remove('wishlist-visible');
             }
             //showToastr(data.status, data.message);
             localStorage.setItem('wishlistCount', JSON.stringify(data.wishlistCount));

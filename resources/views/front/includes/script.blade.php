@@ -26,6 +26,11 @@
 
     function showFlashMessage(msg, type = 'success') {
         const flash = document.getElementById('flash-msg');
+
+        if (!flash) {
+            console.log(msg);
+            return;
+        }
         
         let icon = '';
         if (type === 'success') {
@@ -778,6 +783,282 @@ $(document).on('change', '.city_dropdown', function() {
 </script>
 <!-- Fetch Order detail by id -->
 
+<script>
+    $(document).ready(function() {
+        $.validator.addMethod('alphanumericCouponCode', function(value, element) {
+            return this.optional(element) || /^[A-Za-z0-9]+$/.test(value);
+        }, 'Coupon code can only contain letters and numbers.');
 
+        $.validator.addMethod('affiliatePercentageLimit', function(value, element) {
+            if ($('#discount_type').val() !== 'percentage' || this.optional(element)) {
+                return true;
+            }
+
+            const maximumPercentage = parseFloat($('#couponForm').data('max-percentage'));
+            return !isNaN(maximumPercentage) && parseFloat(value) <= maximumPercentage;
+        });
+
+        $(function () {
+            $('form#couponForm').validate({
+                rules: {
+                    name: 'required',
+                    coupon_code: {
+                        required: true,
+                        alphanumericCouponCode: true
+                    },
+                    discount_value: {
+                        required: true,
+                        number: true,
+                        min: 0.01,
+                        affiliatePercentageLimit: true
+                    },
+                    min_cart_value: {
+                        number: true,
+                        min: 0
+                    },
+                    max_discount: {
+                        number: true,
+                        min: 0
+                    },
+                    available_coupons: {
+                        required: function() {
+                            return $('#is_unlimited').val() === '0';
+                        },
+                        digits: true,
+                        min: 1
+                    },
+                    per_user_avalibity: {
+                        required: true,
+                        digits: true,
+                        min: 1
+                    },
+                    start_date: 'dateISO',
+                    end_date: 'dateISO'
+                },
+                messages: {
+                    name: 'Please enter a name.',
+                    coupon_code: {
+                        required: 'Please enter a coupon code.',
+                        alphanumericCouponCode: 'Use letters and numbers only, without spaces or symbols.'
+                    },
+                    discount_value: {
+                        required: 'Please enter a discount value.',
+                        number: 'Enter a valid number.',
+                        min: 'Discount value must be greater than zero.',
+                        affiliatePercentageLimit: 'Discount percentage exceeds your affiliate maximum.'
+                    },
+                    min_cart_value: {
+                        number: 'Enter a valid number.',
+                        min: 'Minimum cart value cannot be negative.'
+                    },
+                    max_discount: {
+                        number: 'Enter a valid number.',
+                        min: 'Maximum discount cannot be negative.'
+                    },
+                    available_coupons: {
+                        required: 'Enter the number of available coupons.',
+                        digits: 'Enter a whole number.',
+                        min: 'Available coupons must be at least one.'
+                    },
+                    per_user_avalibity: {
+                        required: 'Number of coupons available per user.',
+                        digits: 'Enter a whole number.',
+                        min: 'Per user available coupons must be at least one.'
+                    },
+                    start_date: 'Enter a valid start date.',
+                    end_date: 'Enter a valid end date.'
+                },
+                errorElement: 'div',
+                errorClass: 'invalid-feedback',
+                highlight: function (element) {
+                    $(element).addClass('is-invalid');
+                },
+                unhighlight: function (element) {
+                    $(element).removeClass('is-invalid');
+                }
+            });
+        });
+
+        $('#is_unlimited').on('change', function() {
+            const isUnlimited = $(this).val() === '1';
+            $('#availableCouponsField').toggle(!isUnlimited);
+            if (isUnlimited) {
+                $('#available_coupons').val('').removeClass('is-invalid');
+            }
+        }).trigger('change');
+
+        $('#discount_type').on('change', function() {
+            $('#discount_value').valid();
+        });
+
+        let affiliateCouponPage = 1;
+
+        function renderAffiliateCouponPagination(pagination) {
+            const controls = $('#affiliateCouponPagination').empty();
+            if (!pagination || pagination.total === 0) {
+                return;
+            }
+
+            controls.append($('<span>').text(
+                `Page ${pagination.current_page} of ${pagination.last_page} (${pagination.total} coupons)`
+            ));
+
+            if (pagination.last_page > 1) {
+                const buttons = $('<div class="btn-group" role="group" aria-label="Coupon list pages"></div>');
+                buttons.append($('<button>', {
+                    type: 'button',
+                    class: 'btn btn-outline-secondary affiliateCouponPage',
+                    text: 'Previous',
+                    disabled: pagination.current_page <= 1
+                }).attr('data-page', pagination.current_page - 1));
+                buttons.append($('<button>', {
+                    type: 'button',
+                    class: 'btn btn-outline-secondary affiliateCouponPage',
+                    text: 'Next',
+                    disabled: pagination.current_page >= pagination.last_page
+                }).attr('data-page', pagination.current_page + 1));
+                controls.append(buttons);
+            }
+        }
+
+        function loadAffiliateCoupons(page = 1) {
+            const list = $('#affiliateCouponList');
+            if (!list.length) {
+                return;
+            }
+
+            affiliateCouponPage = page;
+            list.html('<tr><td colspan="6" class="text-center">Loading coupons...</td></tr>');
+            $.get("{{ route('front-user.coupon.index') }}", { page: page })
+                .done(function(response) {
+                    list.empty();
+                    const coupons = response.coupons || [];
+                    renderAffiliateCouponPagination(response.pagination);
+                    if (!response.success || !coupons.length) {
+                        list.append($('<tr>').append($('<td>', {
+                            colspan: 6,
+                            class: 'text-center',
+                            text: 'No coupons created yet.'
+                        })));
+                        return;
+                    }
+
+                    $.each(coupons, function(_, coupon) {
+                        const discount = coupon.discount_type === 'percentage'
+                            ? `${coupon.discount_value}%`
+                            : `₹${coupon.discount_value}`;
+                        const availability = Number(coupon.is_unlimited)
+                            ? 'Unlimited'
+                            : `${coupon.available_coupons} total / ${coupon.per_user_avalibity} per user`;
+                        const editButton = $('<button>', {
+                            type: 'button',
+                            class: 'btn btn-sm btn-outline-primary editAffiliateCoupon',
+                            text: 'Edit'
+                        }).data('coupon', coupon);
+
+                        list.append($('<tr>')
+                            .append($('<td>').text(coupon.name))
+                            .append($('<td>').text(coupon.coupon_code))
+                            .append($('<td>').text(discount))
+                            .append($('<td>').text(availability))
+                            .append($('<td>').text(Number(coupon.is_active) ? 'Active' : 'Inactive'))
+                            .append($('<td>').append(editButton)));
+                    });
+                })
+                .fail(function() {
+                    list.html('<tr><td colspan="6" class="text-center text-danger">Could not load coupons.</td></tr>');
+                });
+        }
+
+        $(document).on('click', '.affiliateCouponPage', function() {
+            if (!$(this).prop('disabled')) {
+                loadAffiliateCoupons(Number($(this).data('page')));
+            }
+        });
+
+        $(document).on('click', '.editAffiliateCoupon', function() {
+            const coupon = $(this).data('coupon');
+            const form = $('#couponForm');
+
+            $.each({
+                coupon_id: coupon.id,
+                name: coupon.name,
+                coupon_code: coupon.coupon_code,
+                discount_type: coupon.discount_type,
+                discount_value: coupon.discount_value,
+                min_cart_value: coupon.min_cart_value,
+                max_discount: coupon.max_discount,
+                start_date: coupon.start_date,
+                end_date: coupon.end_date,
+                is_unlimited: coupon.is_unlimited,
+                available_coupons: coupon.available_coupons,
+                per_user_avalibity: coupon.per_user_avalibity,
+                is_active: coupon.is_active
+            }, function(name, value) {
+                form.find(`[name="${name}"]`).val(value ?? '');
+            });
+
+            $('#discount_type, #is_unlimited').trigger('change');
+            $('#couponModalCreate .modal-title').text('Edit Coupon');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('couponModalCreate')).show();
+        });
+
+        $('#saveCouponFormChangesBtn').on('click', function() {
+            const form = $('#couponForm');
+            if (!form.valid()) {
+                return;
+            }
+
+            const button = $(this);
+            const validator = form.validate();
+            button.prop('disabled', true);
+
+            $.ajax({
+                url: "{{ route('front-user.coupon.save') }}",
+                method: 'POST',
+                data: form.serialize(),
+                success: function(response) {
+                    const message = $('#couponModalCreate .message');
+                    message.removeClass('alert-danger').addClass('alert alert-success').text(response.message);
+                    form[0].reset();
+                    validator.resetForm();
+                    form.find('.is-invalid').removeClass('is-invalid');
+                    $('#is_unlimited').trigger('change');
+                    $('#couponModalCreate .modal-title').text('Create Coupon');
+                    loadAffiliateCoupons(1);
+                },
+                error: function(xhr) {
+                    const response = xhr.responseJSON || {};
+                    const message = $('#couponModalCreate .message');
+                    message.removeClass('alert-success').addClass('alert alert-danger')
+                        .text(response.message || 'Unable to save the coupon. Please try again.');
+
+                    if (response.errors) {
+                        const fieldErrors = {};
+                        $.each(response.errors, function(field, errors) {
+                            fieldErrors[field] = errors[0];
+                        });
+                        validator.showErrors(fieldErrors);
+                    }
+                },
+                complete: function() {
+                    button.prop('disabled', false);
+                }
+            });
+        });
+
+        $('#couponModalCreate').on('hidden.bs.modal', function() {
+            const couponForm = $('#couponForm');
+            couponForm[0].reset();
+            couponForm.validate().resetForm();
+            couponForm.find('.is-invalid').removeClass('is-invalid');
+            $('#is_unlimited').trigger('change');
+            $(this).find('.modal-title').text('Create Coupon');
+            $(this).find('.message').removeClass('alert alert-success alert-danger').text('');
+        });
+
+        loadAffiliateCoupons();
+    });
+</script>
 @stack('scripts')
 

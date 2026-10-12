@@ -5,6 +5,7 @@
 @section('content')  
 <form action="{{route('front-user.postLogin')}}" method="post" autocomplete="off" id="loginForm">   
 @csrf 
+
 <div class="login-section">
         <div class="container">
             <div class="login-box">

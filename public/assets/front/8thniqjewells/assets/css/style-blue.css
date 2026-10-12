@@ -829,6 +829,10 @@ body.modal-open {
 .main-menu ul li ul.megamenu {
   width: 800px;
 }
+
+
+
+
 @media only screen and (min-width: 1200px) and (max-width: 1499px) {
   .main-menu ul li ul.megamenu {
     width: 740px;

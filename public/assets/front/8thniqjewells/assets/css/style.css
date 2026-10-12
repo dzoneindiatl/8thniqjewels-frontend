@@ -889,7 +889,7 @@ only screen and (max-width: 767px) {
 }
 
 .main-menu ul li ul.dropdown {
-    top: 100%;
+    top: 90%;
     left: 0;
     width: 100%;
     position: absolute;
@@ -936,6 +936,13 @@ only screen and (max-width: 767px) {
     top: 0;
     opacity: 1;
     visibility: visible;
+}
+
+.main-menu ul li ul.megamenu-last.dropdown {
+  top: 90% !important;
+  a {
+    color:gray;
+  }
 }
 
 ul.megamenu:before {
@@ -8554,9 +8561,18 @@ a.track-order {
     padding: 10px;
 }
 
-.modal.show .modal-dialog {
+#referalModal.modal.show .modal-dialog {
     transform: none;
     width: 500px;
+}
+
+#couponModalCreate.modal.show {
+    .modal-body {
+        padding: 20px;
+    }
+}
+.error {
+    color: red;
 }
 
 label {

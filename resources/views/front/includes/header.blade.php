@@ -180,7 +180,7 @@
                                         @if(!empty($collectionCat))
                                         <li class="static last_step_menu">
                                             <a href="javascript:void(0);">Collections <i class="fa fa-angle-down"></i></a>
-                                            <ul class="megamenu dropdown">
+                                            <ul class="megamenu-last dropdown">
                                                 @foreach($collectionCat as $collection)
                                                 <li class="mega-title">
                                                     <a href="<?php echo env('WEBSITE_URL').$collection?->slug; ?>">

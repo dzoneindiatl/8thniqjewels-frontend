@@ -69,13 +69,15 @@ class DashboardController extends Controller
             $referalCustomerList = array();
             $paymentDetails = array();
             $referalMaxPercentage = 0;
+
             if(auth()->guard('customer')->user()->user_role_id==5){
                 // For Affliate User orders 
-                if($referralCode){
-                    $referalOrderCurentDetails = Order::with('items', 'items.productGraphics')
+                if($referralCode || true){
+                    $referalOrderCurentDetails = Order::with('items', 'items.productGraphics', 'coupon')
                     ->where('referal_user_id', Auth::guard('customer')->user()->id)
                     ->where('is_referal',1)
                     ->whereNotIn('status',array('delivered','cancelled','cancelled_by_customer','return-rejected'))->orderBy('id', 'desc')->get();
+                    
                     
                     $referalOrderDelivedDetails = Order::with('items', 'items.productGraphics')
                     ->where('referal_user_id', Auth::guard('customer')->user()->id)
@@ -104,7 +106,7 @@ class DashboardController extends Controller
 
                     $referalMaxPercentage = auth()->guard('customer')->user()->referal_max_percentage;
                 }
-                 // For Affliate User orders 
+                // For Affliate User orders 
             }
             
             $shareTitle = 'Join me on 8thnique! Use my referral link.';

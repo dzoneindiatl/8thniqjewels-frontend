@@ -38,7 +38,7 @@ Route::get('/contact-us', [HomeController::class, 'contactUs'])->name('contact.i
 Route::get('/store-locator', [HomeController::class, 'storeLocator'])->name('store-locator');
 Route::get('/franchise-enquiry', [HomeController::class, 'franchiseEnquiry'])->name('franchiseEnquiry');
 Route::get('/wholesale-enquiry', [HomeController::class, 'wholesaleEnquiry'])->name('wholesaleEnquiry');
-Route::get('/dashboard', [\App\Http\Controllers\Front\DashboardController::class, 'index'])->name('user.dashboard');
+Route::get('/dashboard', [App\Http\Controllers\Front\DashboardController::class, 'index'])->name('user.dashboard');
 Route::post('/subscribe', [HomeController::class, 'subscribe'])->name('subscribe');
 Route::get('/product/product-sort-filter', [ShopController::class, 'productSortFilter'])->name('sort.filter');
 Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
@@ -62,6 +62,7 @@ Route::get('/blogs', [HomeController::class, 'blogList'])->name('blog.blog');
 Route::get('/blog-details/{slug}', [HomeController::class, 'blogDetails'])->name('blog.detail');
 Route::match(['get', 'post'], '/check-delevery', [CartController::class, 'checkDelevery'])->name('check.delevery');
 
+Route::get('users/email-verify', [App\Http\Controllers\Front\HomeController::class, 'emailVerify'])->name('user-email-verify')->middleware('signed');
 
 Route::post('/set-currency', [HomeController::class, 'setCurrency'])->name('set-currency');
 Route::match(['get', 'post'], 'variant-combination/prices', [HomeController::class, 'variantCombinationPrices'])->name('variant.combination.prices');
@@ -72,7 +73,7 @@ Route::name('front-')->group(function () {
     Route::get('/', [App\Http\Controllers\Front\HomeController::class, 'index'])->name('home.index');
     Route::get('/shop/{categoryId?}/{subCategoryId?}/{childCategoryId?}', [App\Http\Controllers\Front\ShopController::class, 'index'])->name('shop.index');
 
-    Route::middleware(['GuestCustomer'])->group(function () {        
+    Route::middleware(['GuestCustomer'])->group(function () {
         Route::get('/login', [App\Http\Controllers\Front\Auth\AuthController::class, 'login'])->name('user.login');
         Route::get('/signup', [App\Http\Controllers\Front\Auth\AuthController::class, 'signup'])->name('user.signup');
         Route::get('/affiliates-signup', [App\Http\Controllers\Front\Auth\AuthController::class, 'affiliatesSignup'])->name('user.affiliates-signup');
@@ -94,6 +95,8 @@ Route::name('front-')->group(function () {
     Route::middleware(['AuthCustomer'])->group(function () {
         Route::get('/order-confirm/{id}', [App\Http\Controllers\Front\HomeController::class, 'order_confirm'])->name('user.order.confirm');
 
+        Route::get('/coupons', [App\Http\Controllers\Front\CouponController::class, 'index'])->name('user.coupon.index');
+        Route::post('/coupons', [App\Http\Controllers\Front\CouponController::class, 'store'])->name('user.coupon.save');
         Route::get('/wishlist', [App\Http\Controllers\Front\DashboardController::class, 'wishlist'])->name('user.wishlist');
         Route::get('/logout', [App\Http\Controllers\Front\Auth\AuthController::class, 'logout'])->name('user.logout');
         Route::post('/update-profile', [App\Http\Controllers\Front\DashboardController::class, 'updateProfile'])->name('user.updateProfile');
@@ -139,5 +142,5 @@ Route::name('front-')->group(function () {
     
 Route::post('/checkVarientStock', [App\Http\Controllers\Front\HomeController::class, 'variantStockCheck'])->name('variant.stock.check');
 Route::get('product/collection/{slug}', [HomeController::class, 'collectionListing'])->name('collections.show');
-Route::get('{slug}', [HomeController::class, 'productListing'])->name('category.show');
+Route::get('{slug}/{subSlug?}', [HomeController::class, 'productListing'])->name('category.show');
 

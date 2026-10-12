@@ -76,13 +76,14 @@
                                 
                                 if($product->product_type==2){
                                     $priceData = getPriceByActiveVarientId($product->id,$activeVarientId);
-                                    $buying_price = $priceData['buying_price'];
-                                    $selling_price = $priceData['selling_price'];
+                                    
+                                    $buying_price = isset($priceData['buying_price']) ? $priceData['buying_price'] : 0;
+                                    $selling_price = isset($priceData['selling_price']) ? $priceData['selling_price'] : 0;
                                     $discount_product = $buying_price - $selling_price;
                                     $productImages = getActiveVarientImg($product->id, $activeVarientId);
                                 } else {
-                                    $buying_price = $product->buying_price;
-                                    $selling_price = $product->selling_price;
+                                    $buying_price = isset($product->buying_price) ? $product->buying_price : 0;
+                                    $selling_price = isset($product->selling_price) ? $product->selling_price : 0;
                                     $discount_product = $buying_price - $selling_price;
                                     $productImages = getActiveVarientImg($product->id, $product->id);
                                 }

@@ -203,28 +203,31 @@ class CheckoutController extends Controller
         // Apply Coupon VAlidation 
         $is_referal = 0;
         $referal_user_id = NULL;
+
         if(!empty($request->coupon_id)){
             /* Referal Code section */
                 $referalCoupon = User::whereRaw('? LIKE CONCAT(user_referral_code, "%")', [$request->coupon_id])
                 ->where('is_active', 1)
                 ->first();
-                if(empty($referalCoupon)){
-                    $validation_error .= ' </br> Your referal code does not activated';
-                } else {
-                    $referalStatus = $this->applyReferal($request->coupon_id, $request->sub_total, $request->cart_items);
-                    if($referalStatus->original['status']==false){
-                        $validation_error .=   " </br> " . $referalStatus->original['message'];
-                    }
-                    // Apply Coupon VAlidation 
-                    $is_referal = 1;
-                    $referal_user_id = $referalCoupon->id;
-                }
+                // if(empty($referalCoupon)){
+                //     $validation_error .= ' </br> Your referal code does not activated';
+                // } else {
+                //     $referalStatus = $this->applyReferal($request->coupon_id, $request->sub_total, $request->cart_items);
+                //     if($referalStatus->original['status']==false){
+                //         $validation_error .=   " </br> " . $referalStatus->original['message'];
+                //     }
+                //     // Apply Coupon VAlidation 
+                //     $is_referal = 1;
+                //     $referal_user_id = $referalCoupon->id;
+                // }
             /* Referal Code section */
 
             if(empty($referalCoupon)){
                 $couponDetail = Coupon::where('id', $request->coupon_id)->where('is_active', 1)->first();
+                $referal_user_id = $couponDetail->created_by;
+                $is_referal = 1;
                 if(empty($couponDetail)){
-                        $validation_error .= ' </br> Your coupon does not activated';
+                    $validation_error .= ' </br> Your coupon does not activated';
                 } else {
                     $couponStatus = $this->applyCoupon($couponDetail->coupon_code, $request->sub_total, $request->cart_items);
                     if($couponStatus->original['status']==false){
@@ -248,6 +251,8 @@ class CheckoutController extends Controller
 
         $ip_address = $request->ip(); 
         if ($request->payment_mode == 'cod') {
+            // pending_amount
+            // dd($request);
             $order_id = $this->createOrder(
                 $ip_address,
                 'cod',
@@ -461,7 +466,7 @@ class CheckoutController extends Controller
         foreach ($checkout_data as $item) {
             $taxPrice += $item['tax_price'];
 
-            $product = Product::where('id', $item['product_id'])->where('in_stock',0)->first(); 
+            $product = Product::where('id', $item['productId'])->where('in_stock',0)->first(); 
             if(!empty($product)){
                 $is_half_payment = 1;
             }
@@ -495,7 +500,7 @@ class CheckoutController extends Controller
         $order->sub_total = floor($amount + $discount);
 
         $order->is_referal = $is_referal;
-        $order->referal_user_id = $referal_user_id;
+        $order->referal_user_id = $referal_user_id?? 0;
         $order->coupon_name  = $coupon_id;
         $order->coupon_discount = $coupon_discount;
 
@@ -503,11 +508,18 @@ class CheckoutController extends Controller
         if(isset($checkout_data['instock']) && $checkout_data['instock']==0){
             $order->pending_amount = floor($amount);
         }
+        else {
+            $order->pending_amount = 0;
+        }
         $order->payment_method = $payment_method;
         $order->payment_status = $order_status;
         $order->payment_status = 'pending';
         $order->ip_address = $ip_address;
         $order->save();
+
+        if($order->referal_user_id){
+            
+        }
 
         $order_id = $order->id;
         if (!empty($coupon)) {
@@ -593,7 +605,7 @@ class CheckoutController extends Controller
             $order_items->tax_amount = $item['tax_price'];
             $order_items->sub_total = (($item['quantity'] * $item['sellingPrice']) - ($item['tax_price'] +  $total_discount));
             $order_items->total = (($item['quantity'] * $item['sellingPrice']) - $total_discount);
-            $order_items->pending_amount =  
+            // $order_items->pending_amount =  0;
             $order_items->combination =  json_encode($item['selectedVariants']);
             $order_items->order_status_id = 1; // Pending
             $order_items->status = 'pending';
@@ -882,6 +894,8 @@ class CheckoutController extends Controller
 
         /* Referal Code section */
     }
+
+    
 
     public function applyCoupon($coupon_code=null, $cart_total=null, $cart_items=null)
     {

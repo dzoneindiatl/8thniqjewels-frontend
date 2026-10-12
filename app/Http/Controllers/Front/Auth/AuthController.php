@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use App\Models\{User, Cart, VariantValue, ProductVariantCombination};
+use Illuminate\Support\Facades\URL;
 
 class AuthController extends Controller
 {
@@ -133,7 +134,7 @@ class AuthController extends Controller
                 'errors' => $validator->errors()->first()
             ], 422);
         }
-
+        
         $user = User::where('email', $request->email)
             // ->whereIn('user_role_id', [
             //     config('constant.ROLE_ID.CUSTOMER_ROLE_ID'), 
@@ -164,6 +165,20 @@ class AuthController extends Controller
             ], 422);
         }
 
+        if ($user->is_verified == 0) {
+            return response()->json([
+                'status' => false,
+                'errors' => 'Your account is not verified. Please contact admin.'
+            ], 422);
+        }
+
+        if ($user->is_approved == 0) {
+            return response()->json([
+                'status' => false,
+                'errors' => 'Your account is not approved. Please contact admin.'
+            ], 422);
+        }
+
         if ($user->id == 1) {
             return response()->json([
                 'status' => false,
@@ -178,7 +193,7 @@ class AuthController extends Controller
                 'errors' => 'Your email is not verified'
             ], 422);
         }
-
+        
         $remember = $request->has('remember');
         $credentials = $request->only('email', 'password');
 
@@ -440,19 +455,44 @@ class AuthController extends Controller
             $user->phone_number = $request->phone_number;
             $user->password = Hash::make($request->password);
             $user->referral_code = $referralCode;
-            $user->is_verified = 1;
+            
             $user->is_active = 1;
-            $user->is_approved = 1;
+            if($user->user_role_id != 5) {
+                $user->is_verified = 1;
+                $user->is_approved = 1;
+            }
+            else {
+                $user->is_verified = 0;
+                $user->is_approved = 0;
+            }
+
+
             $user->save();
 
             $lastId = $user->id;
             DB::commit();
 
-            // $template = EmailHelper::getProcessedTemplate('email_verify', $data);
-            // Mail::to($request->email)->send(new emailVerify($template['subject'], $template['body']));
+            $userId = $user->id;
+            $email = $user->email;
+            $expiration = Carbon::now()->addDays(1)->getTimestamp();
+
+            $customSignedUrl = URL::temporarySignedRoute(
+                'user-email-verify',
+                $expiration,
+                ['unique_id' => $userId, 'email' => $email]
+            );
+
+            $template = EmailHelper::getProcessedTemplate('email-verify', [
+                'app_name' => '8thniq',
+                'user_name' => $fullName,
+                'verify_link' => $customSignedUrl,
+            ]);
+            Mail::to($request->email)->send(new emailVerify($template['subject'], $template['body']));
+
             return redirect()->back()->with('success', 'You are successfully registered with us!');
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error($e->getMessage() .''. $e->getLine());
             return response()->json([
                 'status' => false,
                 'message' => $e

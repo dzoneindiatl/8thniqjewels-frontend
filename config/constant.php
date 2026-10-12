@@ -4,9 +4,13 @@ $FRONT_WEBSITE_URL = env('WEBSITE_URL');
 $BASE_PATH = '/home/thniqjewells/public_html/public/';
 #$BASE_PATH = 'http://127.0.01/public/front';
 
-$BASE_PATH_IMAGE = public_path() . '/';
+// $BASE_PATH_IMAGE = public_path() . '/';
 //$BASE_PATH = str_replace('vasvi_superadmin', 'vasvi_main', $BASE_PATH);
 #$BASE_PATH = str_replace('Vasvi.in', 'vasvi-main', $BASE_PATH);
+
+if(!empty($_SERVER['SERVER_NAME']) && ($_SERVER['SERVER_NAME'] == 'localhost' || $_SERVER['SERVER_NAME'] == '127.0.0.1')){
+	$BASE_PATH =  'C:/xampp/htdocs/8thniqjewels-frontend/public/';
+}
 
 return [
 	'FRONT_WEBSITE_URL' => $FRONT_WEBSITE_URL,
@@ -19,8 +23,8 @@ return [
 	'WEBSITE_URL'							=> $WEBSITE_URL,
 	'ADMIN_WEBSITE_URL'							=> env("ADMIN_APP_URL"),
 
-	'USER_IMAGE_PATH'                       => $FRONT_WEBSITE_URL . 'public/uploads/users/',
-	'USER_IMAGE_ROOT_PATH'                       => $BASE_PATH_IMAGE . 'uploads/users/',
+	'USER_IMAGE_PATH'                       => $FRONT_WEBSITE_URL . 'uploads/users/',
+	'USER_IMAGE_ROOT_PATH'                       => $BASE_PATH . 'uploads/users/',
 	'USER_IMAGE_URL'                       => $FRONT_WEBSITE_URL . 'public/uploads/users/',
 
 	'SIZECHART_IMAGE_PATH'                       => $FRONT_WEBSITE_URL . 'public/uploads/size_charts/',
@@ -67,7 +71,7 @@ return [
 	'IMAGE_ROOT_PATH'                       => $BASE_PATH . 'public/img/',
 	'IMAGE_URL'                       => $FRONT_WEBSITE_URL . 'public/img/',
 
-	'REVIEW_IMAGE_ROOT_PATH'          => $BASE_PATH_IMAGE . 'uploads/reviews/',
+	'REVIEW_IMAGE_ROOT_PATH'          => $BASE_PATH . 'uploads/reviews/',
 	'REVIEW_IMAGE_URL'          => $FRONT_WEBSITE_URL . '/public/uploads/reviews/',
 
 

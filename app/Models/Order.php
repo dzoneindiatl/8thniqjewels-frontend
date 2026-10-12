@@ -99,6 +99,10 @@ class Order extends Model
         return $this->hasOne(Currency::class,'currency_code','currency_code');
     }
 
+    public function coupon(){
+        return $this->belongsTo(Coupon::class, 'coupon_name', 'id');
+    }
+
     public function getAddressForInvoice($address_id) {
         $address = UserAddress::find($address_id);
         $string = "N/A";

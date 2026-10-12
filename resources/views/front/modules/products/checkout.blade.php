@@ -646,8 +646,8 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h1 id="staticBackdropLabel">Confiramtion</h1>
-                 </div>
+                    <h1 id="staticBackdropLabel">Confirmation</h1>
+                </div>
                 <div class="modal-body">
                     <div class="row address-form">
                         <div class="col-md-12 mb-3">
@@ -664,6 +664,18 @@
             </div>
         </div>
     </div>
+    <script>
+        document.getElementById('out-of-stock-product')?.addEventListener('hidden.bs.modal', () => {
+            if (document.querySelector('.modal.show')) {
+                return;
+            }
+
+            document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+        });
+    </script>
 @endsection
 
 @push('scripts')

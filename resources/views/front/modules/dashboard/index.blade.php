@@ -93,6 +93,14 @@
                                                         </svg>
                                                         Change Password
                                                     </a>
+                                                    <a href="#" data-bs-toggle="modal" data-bs-target="#couponModalCreate" class="edit-profile">
+                                                        <svg class="edit-profiless" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d="M15 8.95817C14.6583 8.95817 14.375 8.67484 14.375 8.33317V6.6665C14.375 4.0415 13.6333 2.2915 10 2.2915C6.36667 2.2915 5.625 4.0415 5.625 6.6665V8.33317C5.625 8.67484 5.34167 8.95817 5 8.95817C4.65833 8.95817 4.375 8.67484 4.375 8.33317V6.6665C4.375 4.24984 4.95833 1.0415 10 1.0415C15.0417 1.0415 15.625 4.24984 15.625 6.6665V8.33317C15.625 8.67484 15.3417 8.95817 15 8.95817Z" fill="#FFB932" />
+                                                            <path d="M10.0003 16.0417C8.50866 16.0417 7.29199 14.825 7.29199 13.3333C7.29199 11.8417 8.50866 10.625 10.0003 10.625C11.492 10.625 12.7087 11.8417 12.7087 13.3333C12.7087 14.825 11.492 16.0417 10.0003 16.0417ZM10.0003 11.875C9.20033 11.875 8.54199 12.5333 8.54199 13.3333C8.54199 14.1333 9.20033 14.7917 10.0003 14.7917C10.8003 14.7917 11.4587 14.1333 11.4587 13.3333C11.4587 12.5333 10.8003 11.875 10.0003 11.875Z" fill="#FFB932" />
+                                                            <path d="M14.167 18.9585H5.83366C2.15866 18.9585 1.04199 17.8418 1.04199 14.1668V12.5002C1.04199 8.82516 2.15866 7.7085 5.83366 7.7085H14.167C17.842 7.7085 18.9587 8.82516 18.9587 12.5002V14.1668C18.9587 17.8418 17.842 18.9585 14.167 18.9585ZM5.83366 8.9585C2.85033 8.9585 2.29199 9.52516 2.29199 12.5002V14.1668C2.29199 17.1418 2.85033 17.7085 5.83366 17.7085H14.167C17.1503 17.7085 17.7087 17.1418 17.7087 14.1668V12.5002C17.7087 9.52516 17.1503 8.9585 14.167 8.9585H5.83366Z" fill="#FFB932" />
+                                                        </svg>
+                                                        Add Coupon
+                                                    </a>
                                                 </span>
                                             </h4>
                                             <p>
@@ -111,10 +119,11 @@
 
                                             @if (@$user->user_role_id==5)
                                             <p>User Role : Affiliate </p>
+                                            <p>Max Percentage : {{ @$user->referal_max_percentage }} % </p>
                                             <!-- <p> Referal Code :  <h4>{{ @$user->user_referral_code }} </h4> </p> -->
 
                                             <!-- Trigger the referal modal with a button -->
-                                                    <button type="button" class="btn btn-info btn-lg" data-bs-toggle="modal" data-bs-target="#referalModal" class="referalModal">Referal Code</button>
+                                                    <button type="button" class="btn btn-info btn-lg referalModal" data-bs-toggle="modal" data-bs-target="#referalModal">Referal Code</button>
                                                     <!-- Modal -->
                                                     <div id="referalModal" class="modal fade" role="dialog">
                                                         <div class="modal-dialog">
@@ -138,6 +147,106 @@
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    <div id="couponModalCreate" class="modal fade" role="dialog">
+                                                        <div class="modal-dialog modal-xl">
+                                                            <!-- Modal content-->
+                                                            <div class="modal-content">
+                                                                <div class="modal-header">
+                                                                    <h4 class="modal-title">Create Coupon</h4>
+                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                                </div>
+                                                                <div class="modal-body">
+                                                                    <div class="message" role="alert" aria-live="polite"></div>
+                                                                    <form id="couponForm" method="POST" data-max-percentage="{{ min(100, (float) ($user->referal_max_percentage ?? 0)) }}">
+                                                                        @csrf
+                                                                        <div class="row gy-3">
+                                                                            <!-- Name -->
+                                                                            <input type="hidden" name="coupon_id" value="">
+                                                                            <div class="col-xl-3">
+                                                                                <label for="name" class="form-label"><span class="text-danger">*</span>Name</label>
+                                                                                <input type="text" class="form-control" id="name" name="name" required="" value="" placeholder="Name">
+                                                                            </div>
+
+                                                                            <!-- Coupon Code -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="coupon_code" class="form-label"><span class="text-danger">*</span>Coupon Code</label>
+                                                                                <input type="text" class="form-control" id="coupon_code" name="coupon_code" required pattern="[A-Za-z0-9]+" value="" placeholder="Coupon Code">
+                                                                            </div>
+
+                                                                            <!-- Discount Type -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="discount_type" class="form-label">Discount Type</label>
+                                                                                <select class="select2 form-control" name="discount_type" id="discount_type">
+                                                                                    <option value="flat">Flat</option>
+                                                                                    <option selected value="percentage">Percentage</option>
+                                                                                </select>
+                                                                            </div>
+
+                                                                            <!-- Discount Value -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="discount_value" class="form-label"><span class="text-danger">*</span>Discount Value</label>
+                                                                                <input type="number" class="form-control" id="discount_value" name="discount_value" required min="1" step="1" inputmode="decimal" value="" placeholder="Discount Value">
+                                                                            </div>
+                                                                            
+                                                                            <!-- Min Cart Value -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="min_cart_value" class="form-label">Minimum Cart Value</label>
+                                                                                <input type="text" class="form-control" id="min_cart_value" name="min_cart_value" placeholder="Minimum Cart Value">
+                                                                            </div>
+
+                                                                            <!-- Max Discount -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="max_discount" class="form-label">Maximum Discount</label>
+                                                                                <input type="text" class="form-control" id="max_discount" name="max_discount" value="" placeholder="Maximum Amount">
+                                                                            </div>
+
+                                                                            <!-- Start & End Dates -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="start_date" class="form-label">Valid From</label>
+                                                                                <input type="date" class="form-control" id="start_date" name="start_date" value="">
+                                                                            </div>
+                                                                            <div class="col-xl-3">
+                                                                                <label for="end_date" class="form-label">Valid To</label>
+                                                                                <input type="date" class="form-control" id="end_date" name="end_date" value="">
+                                                                            </div>
+
+                                                                            <!-- Is Unlimited -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="is_unlimited" class="form-label">Is Unlimited</label>
+                                                                                <select class="select2 form-control" name="is_unlimited" id="is_unlimited">
+                                                                                    <option selected value="0">No</option>
+                                                                                    <option value="1">Yes</option>
+                                                                                </select>
+                                                                            </div>
+
+                                                                            <div class="col-xl-3" id="availableCouponsField">
+                                                                                <label for="available_coupons" class="form-label"><span class="text-danger">*</span>Available Coupons</label>
+                                                                                <input type="number" class="form-control" id="available_coupons" name="available_coupons" min="1" step="1" value="" placeholder="Quantity">
+                                                                            </div>
+
+                                                                            <div class="col-xl-3 per_user_avalibity" style="display: ;">
+                                                                                <label for="per_user_avalibity" class="form-label"><span class="text-danger">*</span>Per User Available Coupons</label>
+                                                                                <input type="number" class="form-control " id="per_user_avalibity" name="per_user_avalibity" min="1" step="1" value="" placeholder="Quantity">
+                                                                            </div>
+
+                                                                            <!-- Status -->
+                                                                            <div class="col-xl-3">
+                                                                                <label for="is_active" class="form-label">Status</label>
+                                                                                <select class="select2 form-control" name="is_active" id="is_active">
+                                                                                    <option value="1">Active</option>
+                                                                                    <option value="0">Inactive</option>
+                                                                                </select>
+                                                                            </div>
+                                                                        </div>
+                                                                    </form>
+                                                                </div>
+                                                                <div class="modal-footer">
+                                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                                    <button type="button" class="btn btn-primary" id="saveCouponFormChangesBtn">Save Changes</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                             <!-- Trigger the referal modal with a button -->
                                             @endif
                                         </div>
@@ -146,6 +255,34 @@
                             </div>
                         </div>
                     </div>
+                    @if (@$user->user_role_id == 5)
+                    <div class="col-12 mt-3">
+                        <div class="card-white">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3>My Coupons</h3>
+                                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#couponModalCreate">Add Coupon</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Coupon Code</th>
+                                            <th>Discount</th>
+                                            <th>Availability</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="affiliateCouponList">
+                                        <tr><td colspan="6" class="text-center">Loading coupons...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="affiliateCouponPagination" class="d-flex justify-content-between align-items-center mt-3"></div>
+                        </div>
+                    </div>
+                    @endif
                     @if(@$user->user_role_id == 4)
                     <!--   Dashboard section for customer -->
                     <div class="col-md-6">
@@ -802,14 +939,13 @@
                                                         $toalCouponDiscount = 0;
                                                         $totalCommission  = 0;
                                                     @endphp
-                                                   @foreach($referalOrderDelivedDetails as $referalOrder)
+                                                    @foreach($referalOrderDelivedDetails as $referalOrder)
                                                     <?php
                                                     $userAddress = json_decode($referalOrder->shipping_address);
                                                     $totalOrderAmount += @$referalOrder->sub_total;
                                                     $toalCouponDiscount += @$referalOrder->coupon_discount;
                                                     
-                                                    $commission_percentage = explode('@',$referalOrder->coupon_name);
-                                                    $commission_percentage = end($commission_percentage);
+                                                    $commission_percentage = $referalOrder->coupon->discount_value;
                                                     $commission_percentage = $referalMaxPercentage - $commission_percentage;
                                                     $commission =  ($referalOrder->sub_total * $commission_percentage) / 100;
                                                     $totalCommission  += @$commission;
@@ -1270,4 +1406,5 @@
         <i class="fa fa-angle-up"></i>
     </div>
     <!-- Scroll to Top End -->
+    
 @endsection

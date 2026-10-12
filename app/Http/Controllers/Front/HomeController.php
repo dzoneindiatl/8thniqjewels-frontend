@@ -41,10 +41,29 @@ use Illuminate\Support\Facades\Cookie;
 use App\Models\ProductVariantCombination;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
+use Carbon\Carbon;
 
 
 class HomeController extends Controller
 {
+    public function emailVerify(Request $request){
+        
+        if (! $request->hasValidSignature()) {
+            return view('front.verify_email.error');
+        }
+        
+        $unique_id = $request->query('unique_id');
+        $user = User::where('user_role_id', 5)->find($unique_id);
+        if(!$user || $user->is_verified){
+            return view('front.verify_email.error');
+        }
+        $user->is_verified = 1;
+        $user->email_verified_at = Carbon::now()->timestamp;
+        $user->save();
+
+        return view('front.verify_email.success');
+    }
+
     public function index()
     {    
         $cookie = Cookie::get('auto_login');
@@ -346,7 +365,7 @@ class HomeController extends Controller
         }
     }
 
-    public function productListing(Request $request, $slug)
+    public function productListing(Request $request, $slug, $subSlug = null)
     {
         $isWishlisteddata = [];
         $parent = '';
@@ -354,10 +373,22 @@ class HomeController extends Controller
         $DB = Product::where('is_deleted', 0)
             ->where('is_active', 1)
             ->where('draf', false);
-        $category = Category::where('slug', $slug)->firstOrFail();
+        if ($subSlug !== null) {
+            $parentCategory = Category::where('slug', $slug)->firstOrFail();
+            $category = Category::where('slug', $subSlug)
+                ->where('parent_id', $parentCategory->id)
+                ->firstOrFail();
+        } else {
+            $category = Category::where('slug', $slug)->firstOrFail();
+        }
         $categoryType = "category";
         $colorArr = $request->input('colorArr');
         $sizeArr = $request->input('sizeArr');
+
+        $searchTerm = trim((string) $request->input('searchlist', ''));
+        if ($searchTerm !== '') {
+            $DB->where('name', 'like', '%' . $searchTerm . '%');
+        }
         
         // Category filter logic
         if (is_null($category->parent_id)) {
@@ -408,6 +439,60 @@ class HomeController extends Controller
 
                 $categoriesData = collect();
             }
+        }
+
+        $selectedCategoryIds = array_filter((array) $request->input('categories', []), 'is_numeric');
+        $visibleCategoryIds = $categoriesData->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $selectedCategoryIds = array_values(array_intersect(
+            array_map('strval', $selectedCategoryIds),
+            $visibleCategoryIds
+        ));
+
+        $collectionCat = Category::select('name', 'image', 'url', 'slug', 'id')
+            ->where('is_deleted', 0)
+            ->where('is_active', 1)
+            ->where('category_type_id', 1)
+            ->orderBy('id', 'desc')
+            ->get();
+        $selectedCollectionIds = array_filter((array) $request->input('collections', []), 'is_numeric');
+        $visibleCollectionIds = $collectionCat->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $selectedCollectionIds = array_values(array_intersect(
+            array_map('strval', $selectedCollectionIds),
+            $visibleCollectionIds
+        ));
+
+        if (!empty($selectedCollectionIds)) {
+            $DB->where(function ($query) use ($selectedCollectionIds) {
+                $query->whereNotNull('category_id')
+                    ->where('category_id', '!=', '')
+                    ->whereRaw('JSON_VALID(`category_id`) = 1')
+                    ->where(function ($collectionQuery) use ($selectedCollectionIds) {
+                        foreach ($selectedCollectionIds as $selectedCollectionId) {
+                            $collectionQuery->orWhereJsonContains('category_id', $selectedCollectionId);
+                        }
+                    });
+            });
+        }
+
+        if (!empty($selectedCategoryIds)) {
+            $categoryIdColumn = is_null($category->parent_id)
+                ? 'main_sub_category_id'
+                : 'main_child_category_id';
+            $categoryJsonColumn = is_null($category->parent_id)
+                ? 'sub_category_id'
+                : 'child_category_id';
+
+            $DB->where(function ($query) use ($selectedCategoryIds, $categoryIdColumn, $categoryJsonColumn) {
+                $query->whereIn($categoryIdColumn, $selectedCategoryIds);
+
+                foreach ($selectedCategoryIds as $selectedCategoryId) {
+                    $query->orWhere(function ($jsonQuery) use ($categoryJsonColumn, $selectedCategoryId) {
+                        $jsonQuery->whereNotNull($categoryJsonColumn)
+                            ->whereRaw('JSON_VALID(`' . $categoryJsonColumn . '`)')
+                            ->whereJsonContains($categoryJsonColumn, $selectedCategoryId);
+                    });
+                }
+            });
         }
 
         // ✅ Filter: Color
@@ -489,7 +574,7 @@ class HomeController extends Controller
         
         $totalResults = (clone $DB)->count();
         // $results = $DB->offset($offset)->limit($limit)->get();
-        $results = $DB->paginate(4);
+        $results = $DB->paginate(4)->withQueryString();
         
         $variants = Variant::where("is_active", 1)->where("is_deleted", 0)->get();
 
@@ -520,19 +605,11 @@ class HomeController extends Controller
                 ->toArray();
         }
 
-        //collection show on home page if colloction has product
-        $collectionCat = Category::select('name', 'image', 'url', 'slug', 'id')
-            ->where("is_deleted",  0)
-            ->where(['is_active' => 1])
-            ->where('category_type_id', 1)
-            // ->whereHas('category_with_product')
-            //->with('category_with_product')
-            ->orderBy('id', 'desc')->get();
-
         if ($request->ajax()) {
             return response()->json([
-                'html' => view("front.modules.shop.load_more_data", compact('results', 'isWishlisteddata', 'totalResults', 'colorArr', 'sizeArr','categoriesData','collectionCat'))->render(),
+                'html' => view("front.modules.shop.product_cards", compact('results', 'colorArr', 'sizeArr', 'isWishlisteddata'))->render(),
                 'totalResults' => $totalResults,
+                'nextUrl' => $results->nextPageUrl(),
             ]);
         }
 
