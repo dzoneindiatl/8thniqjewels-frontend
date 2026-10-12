@@ -102,6 +102,7 @@
                                                 <td style="text-align: right; font-weight: bold;" class="finalAmount">₹0</td>
                                             </tr>
                                         </table>
+                                        <p id="made-to-order-payment-note" class="alert alert-info mt-2 mb-0" style="display:none;" aria-live="polite"></p>
                                     </div>
                                 </div>
 

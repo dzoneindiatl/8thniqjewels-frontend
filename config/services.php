@@ -34,8 +34,14 @@ return [
     'razorpay' => [
         'key' => env('RAZORPAY_KEY'),
         'secret' => env('RAZORPAY_SECRET'),
-        //'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+        'mode' => env('RAZORPAY_MODE', 'live'),
+        'live_key' => env('RAZORPAY_LIVE_KEY'),
+        'live_secret' => env('RAZORPAY_LIVE_SECRET'),
+        'test_key' => env('RAZORPAY_TEST_KEY'),
+        'test_secret' => env('RAZORPAY_TEST_SECRET'),
+        'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET'),
     ],
+    'admin_order_status_token' => env('ADMIN_ORDER_STATUS_TOKEN'),
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

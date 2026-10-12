@@ -42,6 +42,13 @@
                         Visit the My Orders section to get further updates about your order.
                         <br/><b>Thank you for shopping with us!</b>
                     </p>
+                    @if($order->pending_amount > 0)
+                        <div class="alert alert-info">
+                            Your 50% advance has been received. The remaining balance of
+                            ₹{{ number_format($order->pending_amount, 2) }} will be due after your order ships.
+                            We will email you a payment link and add it to the Payments section of your account.
+                        </div>
+                    @endif
                     <div class="buy-button">
                         <a class="learn-more" href="{{ route('user.dashboard') }}">
                             Go to account

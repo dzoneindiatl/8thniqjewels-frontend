@@ -45,9 +45,19 @@
                                     <td style="text-align: right; font-weight: bold; color: #ffb932; " class="total-amount">- Rs. {{  @$orderDetails->coupon_discount }}</td>
                                 </tr>
                                 <tr class="total">
-                                    <td>Total</td>
+                                    <td>Order total</td>
                                     <td style="text-align: right; font-weight: bold;">Rs. {{  @$orderDetails->total }}</td>
                                 </tr>
+                                @if($orderDetails->pending_amount > 0)
+                                    <tr>
+                                        <td>Paid so far</td>
+                                        <td style="text-align: right; font-weight: bold;">Rs. {{ number_format(max(0, $orderDetails->total - $orderDetails->pending_amount), 2) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Balance due after shipping</td>
+                                        <td style="text-align: right; font-weight: bold;">Rs. {{ number_format($orderDetails->pending_amount, 2) }}</td>
+                                    </tr>
+                                @endif
                             </table>
                         </div>
                     </div>

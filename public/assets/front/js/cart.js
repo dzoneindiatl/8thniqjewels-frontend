@@ -1,4 +1,46 @@
 var notRequiredQtyAjaxClickonQtyBtn = true;
+var makeToOrderCartStatusVerified = true;
+
+function syncMakeToOrderCartStatus(cartItems) {
+    if (!$('#productListContainer').length && !$('#checkout-cart-container').length) {
+        return true;
+    }
+
+    if (!cartItems.length) {
+        return true;
+    }
+
+    let verified = false;
+    $.ajax({
+        url: makeToOrderProductsUrl,
+        type: 'POST',
+        async: false,
+        cache: false,
+        dataType: 'json',
+        data: {
+            _token: $('meta[name="csrf-token"]').attr('content'),
+            product_ids: [...new Set(cartItems.map(item => item.productId))]
+        },
+        success: function (response) {
+            if (!Array.isArray(response.product_ids)) {
+                return;
+            }
+
+            const makeToOrderProductIds = new Set(response.product_ids.map(String));
+            cartItems.forEach(function (item) {
+                item.instock = makeToOrderProductIds.has(String(item.productId)) ? 0 : 1;
+            });
+            localStorage.setItem('cartItems', JSON.stringify(cartItems));
+            verified = true;
+        },
+        error: function (xhr) {
+            console.error('Unable to verify make-to-order product status.', xhr.responseText);
+        }
+    });
+
+    makeToOrderCartStatusVerified = verified;
+    return verified;
+}
 
 $('.mini-cart-btn').on('click', function () {
     $('#addtocatt').show();
@@ -368,6 +410,9 @@ function decodeHtml(html) {
 function priceCalculation() {
     let couponDiscount = parseFloat(localStorage.getItem('coupon_discount')) || 0;
     let cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+    if ($('#productListContainer').length) {
+        syncMakeToOrderCartStatus(cartItems);
+    }
     const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
     let cartData = cartItems.map(item => {
@@ -474,6 +519,18 @@ function priceCalculation() {
         taxableAmount = grandTotal;
     }
     let finalAmount = grandTotal;
+    const isCartPage = $('#productListContainer').length > 0;
+    const isPartialPayment = isCartPage || $('#razorpay').is(':checked');
+    if (isPartialPayment) {
+        const shippingCharge = parseFloat($('#totalShippingCharge').text().replace(/[^\d.]/g, '')) || 0;
+        const fullOrderTotal = grandTotal
+            + (taxOption === 'inclusive' ? 0 : totalTaxPrice)
+            + shippingCharge;
+        finalAmount = Math.round((Math.floor(fullOrderTotal) / 2) * 100) / 100;
+    }
+    $('.finalAmount').closest('tr').find('td:first').text(
+        isPartialPayment ? '50% deposit due now' : 'Cart total'
+    );
     // Update Summary
     if (totalMrp > 0) {
         $("#totalMrp").html(`₹${Math.floor(totalMrp)}`).show();
@@ -503,14 +560,17 @@ function priceCalculation() {
     if (finalAmount > 0) {
         //$('.finalAmount').html(`₹${finalAmount.toFixed(2)}`);
         if (taxOption == 'inclusive') {
-            $('.finalAmount').html(`₹${(Math.floor(finalAmount))}`);
+            $('.finalAmount').html(`₹${isPartialPayment ? finalAmount.toFixed(2) : Math.floor(finalAmount)}`);
         } else if (taxOption == 'exclusive') {
-            $('.finalAmount').html(`₹${(Math.floor(finalAmount + totalTaxPrice))}`);
+            $('.finalAmount').html(`₹${isPartialPayment ? finalAmount.toFixed(2) : Math.floor(finalAmount + totalTaxPrice)}`);
         }
         $('.checkoutButton').removeClass('disabled-link');
     } else {
         $('.finalAmount').html(`₹0`);
         $('.checkoutButton').addClass('disabled-link');
+    }
+    if (typeof updatePartialPaymentNote === 'function') {
+        updatePartialPaymentNote(cartItems, isPartialPayment);
     }
 }
 

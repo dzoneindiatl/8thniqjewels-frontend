@@ -1006,6 +1006,7 @@ class HomeController extends Controller
     {   
         try {
             $cartItems = [];
+            $hasMakeToOrderItem = false;
             $userBillingAddress = [];
             $usershippingAddress = [];
 
@@ -1016,6 +1017,7 @@ class HomeController extends Controller
                 foreach ($cartRecords as $cart) {
                     $product = Product::find($cart->product_id);
                     if ($product) {
+                        $hasMakeToOrderItem = $hasMakeToOrderItem || (int) $product->in_stock === 0;
                         $cartItems[] = [
                             'product' => @$product,
                             'quantity' => @$cart->quantity
@@ -1036,7 +1038,7 @@ class HomeController extends Controller
             //dd($userBillingAddress);
             //echo "<pre>@@@"; print_r($countries); exit;
 
-            return view('front.modules.products.checkout', compact('cartItems', 'countries', 'userBillingAddress', 'usershippingAddress', 'states', 'userwallet', 'invoiceSetting','userPrimaryAddress'));
+            return view('front.modules.products.checkout', compact('cartItems', 'countries', 'userBillingAddress', 'usershippingAddress', 'states', 'userwallet', 'invoiceSetting','userPrimaryAddress', 'hasMakeToOrderItem'));
         } catch (\Exception $e) {
             Log::error($e);
             return redirect()->back()->with(['error' => 'Unable to load cart', 'error_msg' => $e->getMessage()]);
@@ -1255,5 +1257,19 @@ class HomeController extends Controller
             }
         }
         return $isOutOfStock;
+    }
+
+    public function getMakeToOrderProductIds(Request $request)
+    {
+        $validated = $request->validate([
+            'product_ids' => 'required|array|min:1|max:100',
+            'product_ids.*' => 'required|integer|distinct',
+        ]);
+
+        $productIds = Product::whereIn('id', $validated['product_ids'])
+            ->where('in_stock', 0)
+            ->pluck('id');
+
+        return response()->json(['product_ids' => $productIds]);
     }
 }

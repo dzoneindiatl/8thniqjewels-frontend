@@ -136,6 +136,24 @@ class CheckoutController extends Controller
         // Backend Order validation 
         $login_user_id =  Auth::guard('customer')->user()->id;
         $userAvailableWalletAmount = $this->getuserWallet($login_user_id);
+        $cartItemIds = collect($request->input('cartItems', []))->pluck('productId')->filter()->unique();
+        $isMakeToOrderCart = $cartItemIds->isNotEmpty()
+            && Product::whereIn('id', $cartItemIds)->where('in_stock', 0)->exists();
+        $isSplitPrepaidPayment = $request->payment_mode === 'razorpay';
+        $orderTotal = round((float) ($isSplitPrepaidPayment
+            ? $request->input('order_total', (float) $request->sub_total + (float) $request->wallet_amount)
+            : (float) $request->sub_total + (float) $request->wallet_amount), 2);
+        if ($isSplitPrepaidPayment) {
+            $orderTotal = floor($orderTotal);
+        }
+        $depositAmount = $isSplitPrepaidPayment ? round($orderTotal / 2, 2) : $orderTotal;
+        $depositWalletAmount = $isSplitPrepaidPayment
+            ? min((float) $request->wallet_amount, $depositAmount)
+            : (float) $request->wallet_amount;
+        $balanceDue = $isSplitPrepaidPayment ? round($orderTotal - $depositAmount, 2) : 0;
+        $razorpayAmount = $isSplitPrepaidPayment
+            ? round($depositAmount - $depositWalletAmount, 2)
+            : (float) $request->sub_total;
 
         $codMaxLimit = 50000;
         $invoiceSetting = InvoiceSetting::where('prefix', 'site')->first();
@@ -150,12 +168,23 @@ class CheckoutController extends Controller
         if($request->sub_total < 0){
             $validation_error .= " </br>Your order amount should be greater than zero";
         }
-        if($request->sub_total == 0){
+        if($request->sub_total == 0 && !($isSplitPrepaidPayment && $razorpayAmount <= 0)){
             $validation_error .= " </br> Your order amount cant be zero";
         }
         if($request->wallet_amount > $userAvailableWalletAmount){
             $validation_error .= " </br> You dont have exact amount in wallet";
         } 
+        if ((float) $request->wallet_amount < 0) {
+            $validation_error .= " </br> Wallet amount cannot be negative.";
+        }
+        if ($isSplitPrepaidPayment) {
+            if (!$request->filled('order_total') || !is_numeric($request->input('order_total'))) {
+                $validation_error .= " </br> Unable to verify the order total for partial payment.";
+            } elseif (!is_numeric($request->input('sub_total'))
+                || (int) round((float) $request->input('sub_total') * 100) !== (int) round($razorpayAmount * 100)) {
+                $validation_error .= " </br> The deposit amount does not match the payment due now.";
+            }
+        }
         if($request->payment_mode =='cod' && $request->sub_total > $codMaxLimit){
             $validation_error .= " </br> You have reached maximum amount for COD order.";
         } 
@@ -229,7 +258,8 @@ class CheckoutController extends Controller
                 if(empty($couponDetail)){
                     $validation_error .= ' </br> Your coupon does not activated';
                 } else {
-                    $couponStatus = $this->applyCoupon($couponDetail->coupon_code, $request->sub_total, $request->cart_items);
+                    $couponValidationTotal = $isSplitPrepaidPayment ? $orderTotal : $request->sub_total;
+                    $couponStatus = $this->applyCoupon($couponDetail->coupon_code, $couponValidationTotal, $request->cart_items);
                     if($couponStatus->original['status']==false){
                         $validation_error .=   " </br> " . $couponStatus->original['message'];
                     }
@@ -273,11 +303,44 @@ class CheckoutController extends Controller
             $resp['url'] = route('front-order.success', ['order_id' => encrypt($order_id)]);
             return response()->json($resp);
         } elseif ($request->payment_mode == 'razorpay') {
+            if ($isSplitPrepaidPayment && $razorpayAmount <= 0) {
+                $order_id = $this->createOrder(
+                    $ip_address,
+                    'razorpay',
+                    $orderTotal,
+                    'partially_paid',
+                    $is_referal,
+                    $referal_user_id,
+                    $request->coupon_id,
+                    $request->coupon_discount,
+                    $depositWalletAmount,
+                    $request->shippingcharge,
+                    $request->billing_id,
+                    $request->shipping_id,
+                    $request->cartItems,
+                    $balanceDue,
+                    $isMakeToOrderCart
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'type' => 'wallet',
+                    'url' => route('front-order.success', ['order_id' => encrypt($order_id)]),
+                ]);
+            }
+
             $cartNotes = $request->cartItems;
             session()->put('cart_items', $cartNotes);
             session()->put('checkout_ip_address', $ip_address);
+            session()->put('razorpay_checkout_data', [
+                'order_total' => $orderTotal,
+                'deposit_wallet_amount' => $depositWalletAmount,
+                'balance_due' => $balanceDue,
+                'is_make_to_order' => $isMakeToOrderCart,
+                'razorpay_amount' => $razorpayAmount,
+            ]);
             $post_fields = [
-                "amount" => $request->sub_total * 100,
+                "amount" => (int) round($razorpayAmount * 100),
                 "currency" => "INR",
                 "receipt" => "Receipt",
                 "partial_payment" => false,
@@ -290,7 +353,11 @@ class CheckoutController extends Controller
                     "shippingcharge"    => $request->shippingcharge,
                     "billing_id"        => $request->billing_id,
                     "shipping_id"       => $request->shipping_id,
-                    "wallet_amount"     => $request->wallet_amount,
+                    "wallet_amount"     => $depositWalletAmount,
+                    "order_total"       => $orderTotal,
+                    "deposit_amount"    => $depositAmount,
+                    "balance_due"       => $balanceDue,
+                    "is_make_to_order"  => $isMakeToOrderCart ? 1 : 0,
                 ]
             ];
 
@@ -372,9 +439,15 @@ class CheckoutController extends Controller
         Log::info('Payment Response');
         Log::info($paymentsResponse);
 
-        $latestPayment = $paymentsResponse['items'][0];
+        $latestPayment = $paymentsResponse['items'][0] ?? null;
+        if (!$latestPayment) {
+            Log::error('Razorpay returned no payments for the checkout order.', [
+                'razorpay_order_id' => $razorpayOrderId,
+            ]);
+            return redirect()->back()->with('error', 'Unable to verify the payment. Please contact support.');
+        }
         if ($latestPayment['status'] === 'authorized' && !$latestPayment['captured']) {
-            $paymentsResponse = $this->callApi(
+            $captureResponse = $this->callApi(
                 "https://api.razorpay.com/v1/payments/{$latestPayment['id']}/capture",
                 [
                     'amount' => $latestPayment['amount'],
@@ -383,12 +456,21 @@ class CheckoutController extends Controller
                 'razorpay',
                 'POST'
             );
+            if (!isset($captureResponse['error'])) {
+                $latestPayment = $captureResponse;
+            }
         }
 
-        if (!empty($paymentsResponse['items'])) {
+        $paymentItems = $paymentsResponse['items'] ?? [];
+        if (!empty($latestPayment) && ($latestPayment['status'] ?? null) === 'captured') {
+            $paymentItems[] = $latestPayment;
+        }
+        if (!empty($paymentItems)) {
             // Filter only successful payments
-            $successfulPayments = array_filter($paymentsResponse['items'], function ($payment) {
-                return $payment['status'] === 'captured' && $payment['captured'] === true;
+            $successfulPayments = array_filter($paymentItems, function ($payment) use ($razorpayOrderId) {
+                return ($payment['status'] ?? null) === 'captured'
+                    && ($payment['captured'] ?? false) === true
+                    && ($payment['order_id'] ?? null) === $razorpayOrderId;
             });
             // Get the latest successful payment
             $latestPayment = null;
@@ -400,9 +482,27 @@ class CheckoutController extends Controller
             }
 
             if ($latestPayment) {
-                $wAmount = $latestPayment['notes']['wallet_amount'] ?? 0;
+                $paymentNotes = $latestPayment['notes'] ?? [];
+                $checkoutData = session()->get('razorpay_checkout_data', []);
+                $expectedAmountPaise = isset($checkoutData['razorpay_amount'])
+                    ? (int) round((float) $checkoutData['razorpay_amount'] * 100)
+                    : null;
+                if (($latestPayment['order_id'] ?? null) !== $razorpayOrderId
+                    || $expectedAmountPaise === null
+                    || (int) ($latestPayment['amount'] ?? 0) !== $expectedAmountPaise) {
+                    Log::error('Razorpay payment amount did not match the checkout amount.', [
+                        'razorpay_order_id' => $razorpayOrderId,
+                        'payment_id' => $latestPayment['id'] ?? null,
+                        'expected_amount' => $expectedAmountPaise,
+                        'received_amount' => $latestPayment['amount'] ?? null,
+                    ]);
+                    return redirect()->back()->with('error', 'The payment amount could not be verified. Please contact support.');
+                }
+                $wAmount = $paymentNotes['wallet_amount'] ?? $checkoutData['deposit_wallet_amount'] ?? 0;
                 $payAmount = $latestPayment['amount'] / 100;
-                $totalAmt = $payAmount + $wAmount;
+                $totalAmt = $paymentNotes['order_total'] ?? $checkoutData['order_total'] ?? ($payAmount + $wAmount);
+                $balanceDue = $paymentNotes['balance_due'] ?? $checkoutData['balance_due'] ?? 0;
+                $isMakeToOrder = (bool) ($paymentNotes['is_make_to_order'] ?? $checkoutData['is_make_to_order'] ?? false);
                 $ip_address = session()->get('checkout_ip_address', $request->ip());
                 // Create the order in Laravel
                 $order_id = $this->createOrder(
@@ -410,26 +510,29 @@ class CheckoutController extends Controller
                     'razorpay',
                     $totalAmt,
                     'paid',
-                    $latestPayment['notes']['is_referal'] ?? null,
-                    $latestPayment['notes']['referal_user_id'] ?? null,
-                    $latestPayment['notes']['coupon_id'] ?? null,
-                    $latestPayment['notes']['coupon_discount'] ?? 0,
+                    $paymentNotes['is_referal'] ?? null,
+                    $paymentNotes['referal_user_id'] ?? null,
+                    $paymentNotes['coupon_id'] ?? null,
+                    $paymentNotes['coupon_discount'] ?? 0,
                     $wAmount,
-                    $latestPayment['notes']['shippingcharge'] ?? 0,
-                    $latestPayment['notes']['billing_id'] ?? null,
-                    $latestPayment['notes']['shipping_id'] ?? null,
-                    session()->get('cart_items')
+                    $paymentNotes['shippingcharge'] ?? 0,
+                    $paymentNotes['billing_id'] ?? null,
+                    $paymentNotes['shipping_id'] ?? null,
+                    session()->get('cart_items'),
+                    $balanceDue,
+                    $isMakeToOrder
                 );
 
 
                 // Save payment ID
                 Order::find($order_id)->update([
                     'razorpay_payment_id' => $latestPayment['id'],
-                    'payment_status'      => 'paid',
+                    'payment_status'      => $balanceDue > 0 ? 'partially_paid' : 'paid',
                 ]);
 
                 session()->forget('cart_items');
                 session()->forget('checkout_ip_address');
+                session()->forget('razorpay_checkout_data');
 
                 return redirect()->route('front-order.success', ['order_id' => encrypt($order_id)]);
             }
@@ -439,7 +542,7 @@ class CheckoutController extends Controller
     }
 
 
-    public function createOrder($ip_address,$payment_method, $amount, $order_status, $is_referal, $referal_user_id, $coupon_id, $coupon_discount, $wallet_amount = 0, $shippingcharge, $billingId, $shippingId, $checkout_data)
+    public function createOrder($ip_address,$payment_method, $amount, $order_status, $is_referal, $referal_user_id, $coupon_id, $coupon_discount, $wallet_amount = 0, $shippingcharge, $billingId, $shippingId, $checkout_data, $pending_amount = 0, $is_make_to_order = false)
     {
 
         //     DB::beginTransaction();
@@ -465,13 +568,13 @@ class CheckoutController extends Controller
         }
 
         $taxPrice = 0;
-        $is_half_payment = 0;
+        $containsMakeToOrderItem = false;
         foreach ($checkout_data as $item) {
             $taxPrice += $item['tax_price'];
 
             $product = Product::where('id', $item['productId'])->where('in_stock',0)->first(); 
             if(!empty($product)){
-                $is_half_payment = 1;
+                $containsMakeToOrderItem = true;
             }
         }
 
@@ -507,18 +610,29 @@ class CheckoutController extends Controller
         $order->coupon_name  = $coupon_id;
         $order->coupon_discount = $coupon_discount;
 
-        $order->total = floor($amount);
-        if(isset($checkout_data['instock']) && $checkout_data['instock']==0){
-            $order->pending_amount = floor($amount);
-        }
-        else {
-            $order->pending_amount = 0;
-        }
-        $order->payment_method = $payment_method;
-        $order->payment_status = $order_status;
-        $order->payment_status = 'pending';
-        $order->ip_address = $ip_address;
-        $order->save();
+        // $order->total = floor($amount);
+        // $order->pending_amount = floor($pending_amount);
+        // $order->is_make_to_order = $is_make_to_order || (bool) $is_half_payment;
+        // $order->payment_method = $payment_method;
+        // $order->payment_status = $pending_amount > 0 ? 'partially_paid' : $order_status;
+        // $order->ip_address = $ip_address;
+        // $order->save();
+
+        $order->total = round((float) $amount, 2);
+$order->pending_amount = round((float) $pending_amount, 2);
+
+$order->is_half_payment = (float) $pending_amount > 0;
+$order->is_make_to_order = (bool) $is_make_to_order || $containsMakeToOrderItem;
+
+$order->payment_method = $payment_method;
+
+$order->payment_status = $pending_amount > 0
+    ? 'partially_paid'
+    : $order_status;
+
+$order->ip_address = $ip_address;
+
+$order->save();
 
         if($order->referal_user_id){
             

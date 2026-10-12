@@ -82,7 +82,7 @@
                 <div class="row">
                     <div class="col-lg-8">
                         <div class="checkout-details">
-                            <div class="accordion" id="general-question">
+                            <div class="accordion" id="general-question" data-has-make-to-order="{{ !empty($hasMakeToOrderItem) ? '1' : '0' }}">
                                 <div class="card mb-3">
                                     <div class="card-header" id="headingOne">
                                         <h5 class="mb-0">
@@ -342,19 +342,19 @@
                                 <div class="card mb-3">
                                     <div class="card-header" id="headingTwo">
                                         <h5 class="mb-0">
-                                            <button class="accordio-heading collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-controls="collapseTwo" aria-expanded="false">
+                                            <button class="accordio-heading{{ !empty($hasMakeToOrderItem) ? '' : ' collapsed' }}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-controls="collapseTwo" aria-expanded="{{ !empty($hasMakeToOrderItem) ? 'true' : 'false' }}">
                                                 Payment 
                                             </button>
                                         </h5>
                                     </div>
 
-                                    <div id="collapseTwo" class="collapse" aria-labelledby="headingTwo" data-bs-parent="#general-question">
+                                    <div id="collapseTwo" class="collapse{{ !empty($hasMakeToOrderItem) ? ' show' : '' }}" aria-labelledby="headingTwo" data-bs-parent="#general-question">
                                         <div class="card-body">
                                             <div class="address-details">
                                                 <div class="row">
                                                     <div class="col-md-12">
                                                         <div class="order-payment-method">
-                                                            <div class="single-payment-method show codPaymentDiv">
+                                                            <div class="single-payment-method show codPaymentDiv" style="{{ !empty($hasMakeToOrderItem) ? 'display:none;' : '' }}">
                                                                 <div class="payment-method-name">
                                                                     <div class="custom-control custom-radio">
                                                                         <input type="radio" id="cash" name="paymentmethod1" value="cod" class="custom-control-input cash payment_type" >
@@ -393,7 +393,7 @@
                                                             <div class="single-payment-method">
                                                                 <div class="payment-method-name">
                                                                     <div class="custom-control custom-radio">
-                                                                        <input type="radio" id="razorpay" name="paymentmethod2" value="razorpay" class="custom-control-input razorpay payment_type">
+                                                                        <input type="radio" id="razorpay" name="paymentmethod2" value="razorpay" class="custom-control-input razorpay payment_type"{{ !empty($hasMakeToOrderItem) ? ' checked' : '' }}>
                                                                         <label class="custom-control-label" for="razorpay">Razor Pay</label>
                                                                     </div>
                                                                 </div>
@@ -448,7 +448,7 @@
                                         </h5>
                                     </div>
                                     <div id="collapseThree" class="collapse" aria-labelledby="headingThree" data-bs-parent="#general-question">
-                                        <div id="checkout-cart-container">
+                                        <div id="checkout-cart-container" data-has-make-to-order="{{ !empty($hasMakeToOrderItem) ? '1' : '0' }}">
                                             <!--  Product content -->
                                         </div>
                                     </div>
@@ -493,6 +493,7 @@
                                                 <td style="text-align: right; font-weight: bold;" class="finalAmount">₹0</td>
                                             </tr>
                                         </table>
+                                        <p id="made-to-order-payment-note" class="alert alert-info mt-2 mb-0" style="display:none;" aria-live="polite"></p>
                                     </div>
                                 </div>
                             </div>
@@ -682,7 +683,6 @@
     <script>
         var RAZORPAYKEY = "{{ env('RAZORPAY_MODE') == 'test' ? env('RAZORPAY_TEST_KEY') : env('RAZORPAY_LIVE_KEY') }}";
     </script>
-    <script src="{{ asset('assets/front/js/checkouts.js') }}"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
     <script>

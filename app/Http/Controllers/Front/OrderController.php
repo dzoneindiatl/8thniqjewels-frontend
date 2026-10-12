@@ -19,7 +19,9 @@ use App\Models\PaymentMethod;
 use App\Models\WalletHistory;
 use App\Models\InvoiceSetting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use App\Http\Controllers\Controller;
 use App\Models\ProductVariantCombination;
 use App\Helpers\SequelShippingHelper;
@@ -54,6 +56,201 @@ class OrderController extends Controller
             'status' => true,
             'html' => $html,
         ]);
+    }
+
+    public function createBalancePaymentLinkWhenShipped(Request $request, $orderNumber)
+    {
+        $token = config('services.admin_order_status_token');
+        $providedToken = $request->bearerToken();
+
+        if (!$token) {
+            return response()->json(['message' => 'Admin order status integration is not configured.'], 503);
+        }
+        if (!$providedToken || !hash_equals($token, $providedToken)) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $order = Order::where('order_number', $orderNumber)->firstOrFail();
+        if ($order->status !== 'shipped') {
+            return response()->json(['message' => 'The order must be marked shipped before creating its balance payment link.'], 409);
+        }
+        if ((float) $order->pending_amount <= 0) {
+            return response()->json(['message' => 'This order has no outstanding balance.'], 422);
+        }
+
+        $customer = $order->user;
+        if (!$customer || !$customer->email) {
+            return response()->json(['message' => 'The customer has no email address for the payment link.'], 422);
+        }
+
+        if (!$order->balance_payment_link_id || !$order->balance_payment_link_url) {
+            $mode = config('services.razorpay.mode', 'live');
+            $key = config("services.razorpay.{$mode}_key");
+            $secret = config("services.razorpay.{$mode}_secret");
+            if (!$key || !$secret) {
+                return response()->json(['message' => 'Razorpay credentials are not configured.'], 503);
+            }
+
+            $paymentLinkEndpoint = rtrim(env('RAZORPAY_DEFAULT_URL', 'https://api.razorpay.com/v1/'), '/') . '/payment_links';
+            $paymentLinkResponse = Http::withBasicAuth($key, $secret)
+                ->acceptJson()
+                ->post($paymentLinkEndpoint, [
+                    'amount' => (int) round((float) $order->pending_amount * 100),
+                    'currency' => 'INR',
+                    'accept_partial' => false,
+                    'reference_id' => $order->order_number,
+                    'description' => 'Remaining balance for order ' . $order->order_number,
+                    'customer' => [
+                        'name' => $customer->name,
+                        'email' => $customer->email,
+                        'contact' => $customer->phone_number,
+                    ],
+                    'notify' => ['email' => true, 'sms' => false],
+                    'reminder_enable' => false,
+                    'callback_url' => route('balance-payment.callback'),
+                    'callback_method' => 'get',
+                    'notes' => ['order_id' => (string) $order->id],
+                ]);
+
+            if (!$paymentLinkResponse->successful()) {
+                Log::error('Razorpay balance payment link creation failed.', [
+                    'order_id' => $order->id,
+                    'status' => $paymentLinkResponse->status(),
+                    'response' => $paymentLinkResponse->json(),
+                ]);
+                return response()->json(['message' => 'Unable to create the Razorpay balance payment link.'], 502);
+            }
+
+            $paymentLink = $paymentLinkResponse->json();
+            if (empty($paymentLink['id']) || empty($paymentLink['short_url'])) {
+                Log::error('Razorpay returned an incomplete balance payment link.', [
+                    'order_id' => $order->id,
+                    'response' => $paymentLink,
+                ]);
+                return response()->json(['message' => 'Razorpay returned an incomplete payment link.'], 502);
+            }
+
+            $order->balance_payment_link_id = $paymentLink['id'];
+            $order->balance_payment_link_url = $paymentLink['short_url'];
+            $order->save();
+        }
+
+        Mail::send('emails.balance-payment-link', [
+            'customerName' => $customer->name,
+            'orderNumber' => $order->order_number,
+            'balanceAmount' => (float) $order->pending_amount,
+            'currency' => '₹',
+            'paymentUrl' => $order->balance_payment_link_url,
+        ], function ($message) use ($customer, $order) {
+            $message->to($customer->email)
+                ->subject('Payment due for shipped order ' . $order->order_number);
+        });
+
+        return response()->json([
+            'message' => 'Balance payment link created and emailed.',
+            'order_number' => $order->order_number,
+            'balance_due' => (float) $order->pending_amount,
+            'payment_url' => $order->balance_payment_link_url,
+        ]);
+    }
+
+    public function balancePaymentCallback(Request $request)
+    {
+        $paymentLinkId = (string) $request->query('razorpay_payment_link_id', '');
+        $referenceId = (string) $request->query('razorpay_payment_link_reference_id', '');
+        $paymentId = (string) $request->query('razorpay_payment_id', '');
+        $paymentStatus = (string) $request->query('razorpay_payment_link_status', '');
+        $signature = (string) $request->query('razorpay_signature', '');
+        $secret = $this->razorpayApiSecret();
+
+        if (!$secret) {
+            abort(503, 'Razorpay is not configured.');
+        }
+        if (!$paymentLinkId || !$referenceId || !$paymentId || !$signature) {
+            abort(400, 'Missing payment verification data.');
+        }
+
+        $signaturePayload = implode('|', [$paymentLinkId, $referenceId, $paymentStatus, $paymentId]);
+        $expectedSignature = hash_hmac('sha256', $signaturePayload, $secret);
+        if (!hash_equals($expectedSignature, $signature)) {
+            abort(403, 'Payment signature verification failed.');
+        }
+
+        $order = Order::where('balance_payment_link_id', $paymentLinkId)
+            ->where('order_number', $referenceId)
+            ->firstOrFail();
+
+        if ($paymentStatus === 'paid') {
+            $this->markBalancePaymentAsPaid($order->id, $paymentId);
+            return redirect()->route('user.dashboard')->with('success', 'The remaining order balance has been paid.');
+        }
+
+        return redirect()->route('user.dashboard')->with('error', 'The balance payment was not completed.');
+    }
+
+    public function balancePaymentWebhook(Request $request)
+    {
+        $webhookSecret = config('services.razorpay.webhook_secret');
+        if (!$webhookSecret) {
+            return response()->json(['message' => 'Razorpay webhook is not configured.'], 503);
+        }
+
+        $signature = (string) $request->header('X-Razorpay-Signature', '');
+        $expectedSignature = hash_hmac('sha256', $request->getContent(), $webhookSecret);
+        if (!$signature || !hash_equals($expectedSignature, $signature)) {
+            return response()->json(['message' => 'Invalid webhook signature.'], 401);
+        }
+
+        if ($request->input('event') !== 'payment_link.paid') {
+            return response()->json(['message' => 'Event ignored.']);
+        }
+
+        $paymentLink = $request->input('payload.payment_link.entity', []);
+        $payment = $request->input('payload.payment.entity', []);
+        $linkId = $paymentLink['id'] ?? null;
+        $referenceId = $paymentLink['reference_id'] ?? null;
+        $paymentId = $payment['id'] ?? null;
+
+        if (!$linkId || !$referenceId || !$paymentId || ($paymentLink['status'] ?? null) !== 'paid') {
+            return response()->json(['message' => 'Incomplete paid-link event.'], 422);
+        }
+
+        $order = Order::where('balance_payment_link_id', $linkId)
+            ->where('order_number', $referenceId)
+            ->firstOrFail();
+        if ((float) $order->pending_amount <= 0
+            && $order->balance_payment_payment_id === $paymentId) {
+            return response()->json(['message' => 'Balance payment already recorded.']);
+        }
+        $expectedAmount = (int) round((float) $order->pending_amount * 100);
+        if ((int) ($paymentLink['amount'] ?? 0) !== $expectedAmount
+            || (int) ($paymentLink['amount_paid'] ?? 0) < $expectedAmount) {
+            return response()->json(['message' => 'Payment amount does not match the outstanding balance.'], 422);
+        }
+
+        $this->markBalancePaymentAsPaid($order->id, $paymentId);
+        return response()->json(['message' => 'Balance payment recorded.']);
+    }
+
+    private function razorpayApiSecret(): ?string
+    {
+        $mode = config('services.razorpay.mode', 'live');
+        return config("services.razorpay.{$mode}_secret");
+    }
+
+    private function markBalancePaymentAsPaid($orderId, $paymentId): void
+    {
+        DB::transaction(function () use ($orderId, $paymentId) {
+            $order = Order::whereKey($orderId)->lockForUpdate()->firstOrFail();
+            if ((float) $order->pending_amount <= 0) {
+                return;
+            }
+
+            $order->pending_amount = 0;
+            $order->balance_payment_payment_id = $paymentId;
+            $order->payment_status = 'paid';
+            $order->save();
+        });
     }
 
 

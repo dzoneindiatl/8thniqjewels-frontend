@@ -54,6 +54,10 @@ class DashboardController extends Controller
             $orderCurentDetails = array();
             $orderDelivedDetails = array();
             $orderCancelledDetails = array();
+            $balancePaymentOrders = Order::where('user_id', Auth::guard('customer')->user()->id)
+                ->where('pending_amount', '>', 0)
+                ->orderByDesc('id')
+                ->get();
             if(auth()->guard('customer')->user()->user_role_id==4){
                 // $orderDetails = Order::with('items', 'items.productGraphics')->where('user_id', Auth::guard('customer')->user()->id)->orderBy('id', 'desc')->get();
                 $orderCurentDetails = Order::with('items', 'items.productGraphics')->where('user_id', Auth::guard('customer')->user()->id)->whereNotIn('status',array('delivered','cancelled','cancelled_by_customer','return-rejected'))->orderBy('id', 'desc')->get();
@@ -121,7 +125,7 @@ class DashboardController extends Controller
                 ->telegram()
                 ->reddit();
 
-            return view('front.modules.dashboard.index', compact('user', 'userAddressDetails', 'countries', 'states','orderCurentDetails','orderDelivedDetails','orderCancelledDetails', 'share_buttons', 'allStatuses', 'redeemedamount', 'totalrefund','wishlistData','referalOrderCurentDetails','referalOrderDelivedDetails','referalOrderCancelledDetails','referalCustomerList','paymentDetails','referalMaxPercentage'));
+            return view('front.modules.dashboard.index', compact('user', 'userAddressDetails', 'countries', 'states','orderCurentDetails','orderDelivedDetails','orderCancelledDetails', 'share_buttons', 'allStatuses', 'redeemedamount', 'totalrefund','wishlistData','referalOrderCurentDetails','referalOrderDelivedDetails','referalOrderCancelledDetails','referalCustomerList','paymentDetails','referalMaxPercentage', 'balancePaymentOrders'));
         } else {
             return redirect()->route('home.index');
         }
@@ -141,13 +145,17 @@ class DashboardController extends Controller
             $countries = Country::where('is_active', 1)->pluck('name', 'id');
             $states = State::where('country_id', 101)->where('is_active', 1)->pluck('name', 'id');
             $orderDetails = Order::with('items', 'items.productGraphics')->where('user_id', Auth::guard('customer')->user()->id)->orderBy('id', 'desc')->get();
+            $balancePaymentOrders = Order::where('user_id', Auth::guard('customer')->user()->id)
+                ->where('pending_amount', '>', 0)
+                ->orderByDesc('id')
+                ->get();
             $allStatuses = OrderStatus::orderBy('step')->where('active', 1)->get();
             $share_buttons = \Share::page(
                 'https://www.laravelclick.com/post/laravel-10-social-media-share-buttons-integration-tutorial',
                 'How to Add Social Media Share Button in Laravel 10 App?'
             )->facebook()->twitter()->linkedin()->whatsapp()->telegram()->reddit();
 
-            return view('front.modules.dashboard.index', compact('user', 'userAddressDetails', 'countries', 'states', 'orderDetails', 'share_buttons', 'allStatuses'));
+            return view('front.modules.dashboard.index', compact('user', 'userAddressDetails', 'countries', 'states', 'orderDetails', 'share_buttons', 'allStatuses', 'balancePaymentOrders'));
         } catch (Exception $e) {
             Log::error($e);
             return redirect()->back()->with(['error' => 'Somethig went wrong', 'error_msg' => $e->getMessage()]);

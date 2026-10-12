@@ -18,9 +18,10 @@
     var wishlistUrl = "{{ route('front-user.wishlist') }}";
     var viewCartUrl = "{{ route('product.viewBag') }}";
     var phonepayPaymentUrl  = "{{ route('phonepay-payment') }}";
+    var makeToOrderProductsUrl = "{{ route('make-to-order-products') }}";
 </script>
-<script src="{{asset('assets/front/js/cart.js')}}"></script>
-<script src="{{asset('assets/front/js/checkouts.js')}}"></script>
+<script src="{{ asset('assets/front/js/cart.js') }}?v={{ filemtime(public_path('assets/front/js/cart.js')) }}"></script>
+<script src="{{ asset('assets/front/js/checkouts.js') }}?v={{ filemtime(public_path('assets/front/js/checkouts.js')) }}"></script>
 
 <script>
 
@@ -1061,4 +1062,3 @@ $(document).on('change', '.city_dropdown', function() {
     });
 </script>
 @stack('scripts')
-

@@ -247,7 +247,12 @@ $.ajaxSetup({
 
 var totalShippingCharge = 0;
 $('#pay_now').off('click').on('click', function (e) { 
-    let that = $(this);
+   if (!makeToOrderCartStatusVerified) {
+       e.preventDefault();
+       $('.pay_error').text('Unable to verify whether your cart contains made-to-order products. Please refresh and try again.');
+       return false;
+   }
+   let that = $(this);
     that.prop('disabled', true).text('Please wait...');
     $('.pay_error').html('');
     $('.pay_success').html('');
@@ -301,10 +306,14 @@ $('#pay_now').off('click').on('click', function (e) {
         let product_sku = item.sku.toLowerCase();
         let variants = item.selectedVariants || {};
 
+        console.log('item.productType : ', item.productType,variants);
+
         //  sku accoring to variant && product type 
         let product_selected_variant_sku = product_sku;
         if(item.productType==2){
-            product_selected_variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
+            // product_selected_variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
+            product_selected_variant_sku = product_sku + '_' + variants.color.toLowerCase();
+
         }
         //  sku accoring to variant && product type
 
@@ -358,8 +367,15 @@ $('#pay_now').off('click').on('click', function (e) {
     // Quantity Validation on checkout page
 
     console.log( 'calculate cart : ', cartItems);
-    var totals = calculateCartTotals(cartItems);
-    var subTotal = totals.finalAmount;
+    var payment_type = $('.payment_type:checked').val();
+    var splitPrepaidPayment = payment_type === 'razorpay';
+    var orderTotals = calculateCartTotals(cartItems);
+    var fullOrderTotal = orderTotals.finalAmount;
+    fullOrderTotal = splitPrepaidPayment ? Math.floor(fullOrderTotal) : fullOrderTotal;
+    var depositAmount = splitPrepaidPayment
+        ? Math.round((fullOrderTotal / 2) * 100) / 100
+        : fullOrderTotal;
+    var subTotal = depositAmount;
     
     // COD order should be less than 500 validation
     if($('[id="cash"]:checked').val() =='cod' && subTotal > codMaxLimit){
@@ -369,14 +385,14 @@ $('#pay_now').off('click').on('click', function (e) {
         $(".pay_error").html("");
     }
     
-    if(parseInt(subTotal) == 0){ //  order amount should be greater than 0 rs validation
+    if(Number(subTotal) <= 0){ //  order amount should be greater than 0 rs validation
         $(".pay_error").html("You cant process order with zero amount.");
         return false;
     } else {
         $(".pay_error").html("");
     }
     
-    if(parseInt(subTotal) < 0){ //  order amount should be greater than 0 rs validation
+    if(Number(subTotal) < 0){ //  order amount should be greater than 0 rs validation
         e.preventDefault();
         $(".pay_error").html("You cant process order with minus amount.");
         return false;
@@ -385,13 +401,12 @@ $('#pay_now').off('click').on('click', function (e) {
     }
     // COD order should be less than 5000 validation
 
-    var payment_type = $('.payment_type:checked').val(); 
-    
     var walletCheckbox = document.getElementById('wallet');
     var wallet_type = walletCheckbox?.checked ? "wallet" : null;
 
     var codCheckbox = document.getElementById('cash');
     var cod_type = codCheckbox?.checked ? "cod" : null;
+    var wallet_amount = 0;
     console.log('wallet_type : ' , wallet_type);
     console.log('cod_type : ' , cod_type);
 
@@ -417,13 +432,18 @@ $('#pay_now').off('click').on('click', function (e) {
         console.log('user_id  : ', USERID);
         console.log('walletBalance  : ', walletBalance);
        
-        // var subTotal = parseFloat($('.finalAmount').text().replace(/[^\d.]/g, ''));
-        var wallet_amount = 0;
         if (walletCheckbox?.checked) {
-            if (parseFloat(walletBalance) >= (subTotal)) {
+            if (splitPrepaidPayment && walletBalance >= fullOrderTotal) {
+                wallet_amount = fullOrderTotal;
+                subTotal = fullOrderTotal;
+                payment_type = "wallet";
+                splitPrepaidPayment = false;
+            } else if (splitPrepaidPayment) {
+                wallet_amount = Math.min(walletBalance, subTotal);
+                subTotal = Math.max(0, subTotal - wallet_amount);
+            } else if (parseFloat(walletBalance) >= subTotal) {
                 wallet_amount = subTotal;
                 payment_type = "wallet";
-                // subTotal = 0;
             } else if (payment_type === "razorpay") {
                 wallet_amount = walletBalance;
                 subTotal = subTotal - walletBalance;
@@ -432,14 +452,15 @@ $('#pay_now').off('click').on('click', function (e) {
                 subTotal = subTotal - walletBalance;
             }
         }
-    } else {
-        var subTotal = parseFloat($('.finalAmount').text().replace(/[^\d.]/g, ''));
+    } else if (!splitPrepaidPayment) {
+        subTotal = parseFloat($('.finalAmount').text().replace(/[^\d.]/g, ''));
     }
 
-    shippingCalculation(shipping_id, cartItems, subTotal);
+    shippingCalculation(shipping_id, cartItems, splitPrepaidPayment ? fullOrderTotal : subTotal);
     var postData = {
         cartItems: cartItems,
         sub_total: subTotal,
+        order_total: splitPrepaidPayment ? fullOrderTotal : null,
         payment_mode: payment_type,
         coupon_id: localStorage.getItem('coupon_id'),
         coupon_discount: parseFloat(localStorage.getItem('coupon_discount')) || 0,
@@ -475,14 +496,22 @@ $('#pay_now').off('click').on('click', function (e) {
                     if (data.success) {
                         if (data.type == 'wallet') {
                             localStorage.removeItem('cartItems');
-                            location.href = window.location.origin + "/dashboard";
+                            localStorage.removeItem('coupon_id');
+                            localStorage.removeItem('coupon_discount');
+                            window.location.href = data.url;
                         } else {
+                            const expectedAmountPaise = Math.round(subTotal * 100);
+                            if (Number(data.data.amount) !== expectedAmountPaise) {
+                                $(".pay_error").html("The payment amount does not match your selected payment. Please refresh checkout and try again.");
+                                return;
+                            }
+
                             var options = {
                                 "key": RAZORPAYKEY,
                                 "amount": data.data.amount,
                                 "currency": "INR",
                                 "name": "VASVI",
-                                "description": "Transaction",
+                                "description": splitPrepaidPayment ? "50% order advance" : "Transaction",
                                 "image": "https://vasvi.in/uploads/settings/AUG2025/1755156000-settings.png",
                                 "order_id": data.data.id,
                                 "callback_url": window.location.origin + "/checkout-callback",
@@ -646,12 +675,60 @@ $(document).ready(function () {
 });
 
 
+function updatePartialPaymentNote(cartItems, isSplitPrepaidPayment) {
+    const $note = $('#made-to-order-payment-note');
+    if (!$note.length || !isSplitPrepaidPayment) {
+        $note.hide().empty();
+        return;
+    }
+
+    const fullOrderTotal = Math.floor(calculateCartTotals(cartItems).finalAmount);
+    const deposit = Math.round((fullOrderTotal / 2) * 100) / 100;
+    const balance = Math.round((fullOrderTotal - deposit) * 100) / 100;
+    $note.text(`A 50% advance of ₹${deposit.toFixed(2)} is due now for all products paid by Razor Pay. Any wallet balance selected will be applied toward the advance. The remaining ₹${balance.toFixed(2)} will be due after your order ships.`);
+    $note.show();
+}
+
+$(document).on('change', '.payment_type', function () {
+    if (this.checked) {
+        $('.payment_type').not(this).prop('checked', false);
+        if (this.value === 'cod') {
+            $('#wallet').prop('checked', false);
+        }
+    }
+    renderCart();
+});
+
+$(document).on('change', '.walletPayment', function () {
+    if (this.checked && $('#cash').is(':checked')) {
+        $('#cash').prop('checked', false);
+    }
+    renderCart();
+});
+
+const initialCheckoutCart = JSON.parse(localStorage.getItem('cartItems')) || [];
+const hasMakeToOrderItem = $('#general-question').attr('data-has-make-to-order') === '1'
+    || initialCheckoutCart.some(item => Number(item.instock) === 0);
+if (hasMakeToOrderItem) {
+    $('.codPaymentDiv').hide();
+    if (!$('.payment_type:checked').length && !$('.walletPayment:checked').length) {
+        $('#razorpay').prop('checked', true);
+    }
+    $('#collapseTwo').addClass('show');
+    $('[data-bs-target="#collapseTwo"]').removeClass('collapsed').attr('aria-expanded', 'true');
+}
+
 renderCart();
 
 function renderCart() {
     var cartItems = [];
     var cartOutOfStock = [];
     var cartAllItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+    if ($('#checkout-cart-container').length && !syncMakeToOrderCartStatus(cartAllItems)) {
+        $('.pay_error').text('Unable to verify whether your cart contains made-to-order products. Please refresh and try again.');
+        $('#pay_now').addClass('disabled-link');
+        return;
+    }
     cartAllItems.forEach(function (item, index) {
         let variants = item.selectedVariants || {};
         //  product is out of stock 
@@ -696,6 +773,7 @@ function renderCart() {
     if (cartItems.length === 0) {
         $container.html('<p>Your cart is empty.</p>');
         $('#totalMrp, #delivery, #totalDiscount, #subTotal, #couponDiscount, #total-items, #grandTotal, #taxableAmount, #taxPrice, .finalAmount').text('₹0');
+        $('#made-to-order-payment-note').hide().empty();
         $('#pay_now').remove();
         $('#shoopping_continue').show();
         $('.Delivery-sec').html('<h3>Your Cart is empty !!!</h3><img src="https://vasvi.in/assets/front/img/vasvi-cart-empty.jpg" style="width:200px !important;height:200px !important" alt="cart empty"></br><button class="w-100 full-btn" id="shoopping_continue"><a href="https://vasvi.in/" style="color:#fff">Add to Cart Any Item</a></button>');
@@ -708,24 +786,18 @@ function renderCart() {
     let totalDiscount = 0;
     let totalTaxPrice = 0;
     let taxOption = 'inclusive';
+    let isSplitPrepaidPayment = $('.payment_type:checked').val() === 'razorpay';
     let qty = 0;
     let sellingPrice = 0;
     let itemPrice = 0;
     console.log(' before loop ', cartItems);
     cartItems.forEach(function (item) {
         qty = item.quantity;
-        if(item.instock==0){
+        if (item.instock == 0) {
             $('.codPaymentDiv').hide();
-            sellingPrice = item.sellingPrice * (50 /100);
-        } else {
-            sellingPrice = item.sellingPrice;
         }
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
-        } else {
-            itemPrice = item.price;
-        }
-        
+        sellingPrice = item.sellingPrice;
+        itemPrice = item.price;
         
         totalMrp += itemPrice * item.quantity;
         // if (item.discountType == "flat") {
@@ -733,7 +805,7 @@ function renderCart() {
         // } else if (item.discountType == "percentage") {
         //     totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
         // }
-        totalDiscount = (itemPrice * item.quantity) - (sellingPrice * item.quantity);
+        totalDiscount += (itemPrice * item.quantity) - (sellingPrice * item.quantity);
 
         taxOption = item.tax_option;
         totalTaxPrice += item.tax_price;
@@ -773,6 +845,13 @@ function renderCart() {
 
     console.log(totalShippingCharge);
     let finalAmount = grandTotal + totalShippingCharge;
+    if (isSplitPrepaidPayment) {
+        if (taxOption == 'exclusive') {
+            finalAmount += totalTaxPrice;
+        }
+        finalAmount = Math.round((Math.floor(finalAmount) / 2) * 100) / 100;
+    }
+    $('.finalAmount').closest('tr').find('td:first').text(isSplitPrepaidPayment ? '50% deposit due now' : 'Cart total');
     // Update Summary
     
     // Maanage COD checkbox text value 
@@ -811,9 +890,9 @@ function renderCart() {
     if (finalAmount > 0) {
         //$('.finalAmount').html(`₹${finalAmount.toFixed(2)}`);
         if (taxOption == 'inclusive') {
-            $('.finalAmount').html(`₹${Math.floor(finalAmount)}`);
+            $('.finalAmount').html(`₹${isSplitPrepaidPayment ? finalAmount.toFixed(2) : Math.floor(finalAmount)}`);
         } else if (taxOption == 'exclusive') {
-            $('.finalAmount').html(`₹${Math.floor(finalAmount + totalTaxPrice)}`);
+            $('.finalAmount').html(`₹${isSplitPrepaidPayment ? finalAmount.toFixed(2) : Math.floor(finalAmount + totalTaxPrice)}`);
         }
         $('.checkoutButton').removeClass('disabled-link');
     } else {
@@ -823,6 +902,7 @@ function renderCart() {
     $('#delivery').text(`₹${delivery.toLocaleString()}`);
     // $('#total-items').text(cartItems.length);
     $('#total-items').html(qty); 
+    updatePartialPaymentNote(cartItems, isSplitPrepaidPayment);
 }
 
 
@@ -835,24 +915,14 @@ function calculateCartTotals(cartItems) {
     let taxOption = 'inclusive';
 
     cartItems.forEach(function (item) {
-
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
-        } else {
-            itemPrice = item.price;
-        }
-
-        totalMrp += itemPrice * item.quantity;
-
-        if (item.discountType == "flat") {
-            totalDiscount += parseInt(item.discountAmount);
-        } 
-        else if (item.discountType == "percentage") {
-            totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
-        }
+        const quantity = Number(item.quantity) || 0;
+        const itemPrice = Number(item.price) || 0;
+        const sellingPrice = Number(item.sellingPrice) || 0;
+        totalMrp += itemPrice * quantity;
+        totalDiscount += (itemPrice - sellingPrice) * quantity;
 
         taxOption = item.tax_option;
-        totalTaxPrice += item.tax_price;
+        totalTaxPrice += Number(item.tax_price) || 0;
     });
 
     let subTotal = totalMrp - totalDiscount;
@@ -863,11 +933,9 @@ function calculateCartTotals(cartItems) {
 
     let finalAmount;
 
-    if (taxOption == 'inclusive') {
-        finalAmount = grandTotal + totalShippingCharge;
-    } else {
-        finalAmount = grandTotal + totalTaxPrice + totalShippingCharge;
-    }
+    finalAmount = grandTotal
+        + (taxOption === 'exclusive' ? totalTaxPrice : 0)
+        + totalShippingCharge;
 
     return {
         totalMrp,

@@ -287,6 +287,30 @@
                     <!--   Dashboard section for customer -->
                     <div class="col-md-6">
                         <div class="card-white mt-3">
+                            <h3>Payments</h3>
+                            @if($balancePaymentOrders->isEmpty())
+                                <p class="mb-0">There are no outstanding order payments.</p>
+                            @else
+                                <p>Outstanding balances for your orders:</p>
+                                @foreach($balancePaymentOrders as $balanceOrder)
+                                    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                                        <div>
+                                            <strong>Order {{ $balanceOrder->order_number }}</strong>
+                                            <div>Balance due: {{ getCurrencySymbol($balanceOrder->currency_code) }}{{ number_format($balanceOrder->pending_amount, 2) }}</div>
+                                            @if(empty($balanceOrder->balance_payment_link_url))
+                                                <small class="text-muted">
+                                                    {{ $balanceOrder->status === 'shipped' ? 'Payment link is being prepared.' : 'Payment link will be available after your order ships.' }}
+                                                </small>
+                                            @endif
+                                        </div>
+                                        @if(!empty($balanceOrder->balance_payment_link_url))
+                                            <a class="btn btn-primary" href="{{ $balanceOrder->balance_payment_link_url }}" target="_blank" rel="noopener noreferrer">Pay balance</a>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            @endif
+                        </div>
+                        <div class="card-white mt-3">
                             <h3>My Orders</h3>
                             <div class="order-list-profile mt-20">
                                 <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -351,7 +375,11 @@
                                                         ?>
                                                         </h5>
                                                         <p class="order-date mt-10">Ordered on: <?php  echo date("d-m-Y H:i",strtotime($order->created_at));  ?></p>
-                                                        <h4 class="rate-order mt-10">₹{{ $order->total }}</h4>
+                                                        <h4 class="rate-order mt-10">Order total: ₹{{ number_format($order->total, 2) }}</h4>
+                                                        @if($order->pending_amount > 0)
+                                                            <p class="mt-1">Paid so far: ₹{{ number_format(max(0, $order->total - $order->pending_amount), 2) }}</p>
+                                                            <p>Balance due after shipping: ₹{{ number_format($order->pending_amount, 2) }}</p>
+                                                        @endif
                                                         <p class="delevery-date mt-10"> <a href="javascript:void(0)" class="track-order" id="openModalBtn" data-orderId="{{ $order->id }}"> Track Order </a></p>
                                                     </div>
                                                 </div>

@@ -30,9 +30,19 @@ Route::get('/', [HomeController::class, 'index'])->name('home.index');
 // Route::post('/phonepay-payment-status', [PhonepayController::class, 'phonepayPaymentStatus'])->name('phonepay-payment-status');
 Route::post('/phonepay-payment', [PhonepayController::class, 'phonepayPayment'])->name('phonepay-payment')->withoutMiddleware([VerifyCsrfToken::class]);
 Route::post('/phonepay-payment-status', [PhonepayController::class, 'phonepayPaymentStatus'])->name('phonepay-payment-status')->withoutMiddleware([VerifyCsrfToken::class]);
+Route::get('/balance-payment/callback', [OrderController::class, 'balancePaymentCallback'])->name('balance-payment.callback');
+Route::post('/balance-payment/webhook', [OrderController::class, 'balancePaymentWebhook'])
+    ->name('balance-payment.webhook')
+    ->withoutMiddleware([VerifyCsrfToken::class])
+    ->middleware('throttle:60,1');
+Route::post('/admin-api/orders/{orderNumber}/shipped-payment-link', [OrderController::class, 'createBalancePaymentLinkWhenShipped'])
+    ->name('admin-api.orders.shipped-payment-link')
+    ->withoutMiddleware([VerifyCsrfToken::class])
+    ->middleware('throttle:10,1');
 
 Route::post('/get-variant-remaining-qty', [HomeController::class, 'getExactVariantComboQty'])->name('get-variant-remaining-qty');
 Route::post('/is-outofstock', [HomeController::class, 'isOutOfStock'])->name('is-outofstock');
+Route::post('/make-to-order-products', [HomeController::class, 'getMakeToOrderProductIds'])->name('make-to-order-products');
 
 Route::get('/contact-us', [HomeController::class, 'contactUs'])->name('contact.index');
 Route::get('/store-locator', [HomeController::class, 'storeLocator'])->name('store-locator');
@@ -143,4 +153,3 @@ Route::name('front-')->group(function () {
 Route::post('/checkVarientStock', [App\Http\Controllers\Front\HomeController::class, 'variantStockCheck'])->name('variant.stock.check');
 Route::get('product/collection/{slug}', [HomeController::class, 'collectionListing'])->name('collections.show');
 Route::get('{slug}/{subSlug?}', [HomeController::class, 'productListing'])->name('category.show');
-
