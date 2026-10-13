@@ -1,5 +1,8 @@
 @extends('front.layouts.app')
 @section('content')
+    @php
+        $isMakeToOrder = (int) $product->qty <= 0 || (int) $product->in_stock === 0;
+    @endphp
     <style>
         .main-slider .slick-slide img {
             height: 700px; /* 👈 Forces a solid, fixed height */
@@ -40,6 +43,79 @@
         .header-main.transparent-menu.sticky.is-sticky img.simple-logo {
             display: none;
         }
+
+        .low-stock-notice {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: fit-content;
+            max-width: 100%;
+            margin: 0 0 24px;
+            padding: 12px 18px 12px 14px;
+            border: 1px solid #f0ddc4;
+            border-left: 4px solid #c58b43;
+            border-radius: 8px;
+            background: linear-gradient(110deg, #fffaf3, #fff);
+            color: #473629;
+            box-shadow: 0 4px 14px rgb(91 61 29 / 7%);
+        }
+
+        .low-stock-notice__icon {
+            display: grid;
+            flex: 0 0 38px;
+            width: 38px;
+            height: 38px;
+            place-items: center;
+            border-radius: 50%;
+            background: #f8ead7;
+            color: #a96f27;
+        }
+
+        .low-stock-notice__copy {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            line-height: 1.35;
+        }
+
+        .low-stock-notice__title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+
+        .low-stock-notice__detail {
+            color: #755d46;
+            font-size: 13px;
+        }
+
+        .product_details li.size-option {
+            width: auto !important;
+            min-width: 48px;
+            max-width: none;
+            height: 40px !important;
+            display: inline-flex;
+            flex-direction: row;
+            padding: 0 14px !important;
+            border: 1px solid #d9d2ca !important;
+            border-radius: 6px;
+            background: #fff !important;
+            color: #3b3028;
+            box-sizing: border-box;
+        }
+
+        .product_details li.size-option.active {
+            border: 2px solid #a10806 !important;
+            color: #a10806 !important;
+        }
+
+        .product_details li.size-option label {
+            width: auto;
+            margin: 0;
+            color: inherit;
+            line-height: 1;
+        }
     </style>
 
     <div class="breadcrumb-area mt-100 pb-50">
@@ -62,6 +138,7 @@
                         <!-- product details inner end -->
                         <div class="product-details-inner">
                             <div class="row">
+                                
                                 <div class="col-lg-5">
                                     <?php 
                                 if($product->product_type==1){
@@ -194,10 +271,10 @@
                                         </div>
                                         <div class="availability mb-30">
                                             <h5>Availability:</h5>
-                                            @if($product->in_stock)
+                                            @if(!$isMakeToOrder)
                                             <span>In stock</span>
                                             @else 
-                                             <span>Out stock</span>
+                                             <span>Out of stock — available to make to order</span>
                                             @endif
                                         </div>
 
@@ -214,16 +291,20 @@
                                                         <ul class="attribute-menu attribute-color product_details">
                                                             @foreach($variant['variant_values'] as $variantValue)
                                                             @php
-                                                                $isActive = false;
-                                                                $image = '';
-                                                                if($activeVarientId && $variantValue['variant_value_id']==$activeVarientId){
-                                                                    $isActive = true;
-                                                                    $variantImage = $product->product_main_images->where('variant_id', $variantValue['id'])->first();
-                                                                    if($variantImage){
-                                                                        $image = asset('uploads/products/' . $variantImage->graphic);
-                                                                    }
+                                                                $isActive = $activeVarientId && $variantValue['variant_value_id'] == $activeVarientId;
+                                                                $type = (int) $variant['variant_type'];
+                                                                $isSizeVariant = strtolower(trim((string) ($variant['variant_name'] ?? ''))) === 'size';
+                                                                $color = trim((string) ($variantValue['color_code'] ?? ''));
+                                                                $image = !empty($variantValue['image'])
+                                                                    ? asset('uploads/products/' . $variantValue['image'])
+                                                                    : null;
+
+                                                                if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $color)) {
+                                                                    $nameColor = trim((string) ($variantValue['name'] ?? ''));
+                                                                    $color = preg_match('/^[a-zA-Z]+$/', $nameColor)
+                                                                        ? strtolower($nameColor)
+                                                                        : '#ffb932';
                                                                 }
-                                                                $type = $variant['variant_type'];
                                                             @endphp
                                                             <li data-productId = "{{  $variant['product_id'] }}"
                                                                     data-id="{{ $variantValue['id'] }}" 
@@ -231,17 +312,19 @@
                                                                     data-value="<?php echo strtolower($variantValue['name']); ?>"
                                                                     data-vid="{{ $variantValue['variant_value_id'] }}"
                                                                     onclick="selectVariant(this); checkVariantStock(this);"
-                                                                    class="s-variant activeVarientLi
-                                                                    {{ in_array($type, [3]) ? 's-variant-round' : '' }} 
+                                                                    class="s-variant activeVarientLi {{ $isSizeVariant ? 'size-option' : '' }}
                                                                     {{ $isActive ? 'active' : '' }} mx-1"
                                                                     style="
-                                                                    {{ in_array($type, [3, 6]) ? 'background-image:url(' . $image . '); background-size:cover;' : '' }}
-                                                                    padding:5px; cursor: pointer;
+                                                                    background:transparent; border:0; padding:5px; cursor:pointer;
                                                                 ">   
                                                                 <input class="attribute-input" name="{{ strtolower($variant['variant_name']) }}" id="color_brown{{  $variantValue['id'] }}" value="{{ $variantValue['id'] }}" type="radio">                                         
-                                                                <div class="pro_img">
-                                                                <img src="https://furnishworlds.com/uploads/products/APR2026/variant_76_69df1faa8b9f0.jpg" alt="" width="20" height="20" style="display: {{ in_array($type, [3, 6]) ? 'block' : 'none' }}; border-radius: {{ in_array($type, [3]) ? '50%' : '0' }};">
-                                                                </div>
+                                                                @unless($isSizeVariant)
+                                                                    <div class="pro_img {{ in_array($type, [2, 4, 6]) ? 'box' : '' }}" style="background-color:{{ $color }};">
+                                                                        @if(in_array($type, [3, 4]) && $image)
+                                                                            <img src="{{ $image }}" alt="{{ $variantValue['name'] }}">
+                                                                        @endif
+                                                                    </div>
+                                                                @endunless
                                                                 <label>{{ $variantValue['name'] }}</label>
                                                             </li>
                                                             @endforeach
@@ -254,7 +337,7 @@
                                         @endif
                                         <!-- variant options for configured product -->
 
-                                        @if($product->in_stock == '1')
+                                        @if(!$isMakeToOrder)
                                         <div class="quantity-cart-box d-flex align-items-center mb-24 quantity">
                                             <!-- <div class="quantity">
                                                 <div class="pro-qty"><input type="text" class="qty-inp" value="1"></div>
@@ -269,6 +352,26 @@
                                                 </div>
                                             </div>
                                         </div>
+
+                                        @if((int) $product->qty > 0 && (int) $product->qty <= 5)
+                                            <div class="low-stock-notice" role="status" aria-live="polite">
+                                                <span class="low-stock-notice__icon" aria-hidden="true">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <path d="M12 3.5L21 19H3L12 3.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                                                        <path d="M12 9V13.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                                                        <circle cx="12" cy="16.5" r="1" fill="currentColor"/>
+                                                    </svg>
+                                                </span>
+                                                <span class="low-stock-notice__copy">
+                                                    <span class="low-stock-notice__title">Selling fast</span>
+                                                    <span class="low-stock-notice__detail">
+                                                        Only {{ (int) $product->qty }} {{ (int) $product->qty === 1 ? 'piece' : 'pieces' }} left in stock
+                                                    </span>
+                                                </span>
+                                            </div>
+                                        @endif
+
+                                        
                                             <div class="product-btn product-btn__color">
                                                 <a href="javascript:void(0)" name="add" class="detail-cart-btn me-3 addToCartBtn addToCartText"
                                                 data-id="{{ $product->id }}" 
@@ -295,7 +398,7 @@
                                         </div>
                                         @endif
 
-                                        @if($product->in_stock == '0')
+                                        @if($isMakeToOrder)
                                         <div class="quantity-cart-box d-flex align-items-center mb-24 quantity">
                                             <!-- <div class="quantity">
                                                 <div class="pro-qty"><input type="text" class="qty-inp" value="1"></div>
@@ -325,7 +428,7 @@
                                                     Make to Order
                                                 </a>
                                                 </br>
-                                                <span style="color:red;font-size:16px">Note : Case of "Ready on Order", You should be pay 50% in Advance and remaining amount after delevery (Not Allow COD payment method).</span>
+                                                <span style="color:red;font-size:16px">Pay 50% when placing your order. The remaining 50% is due when your order ships. Cash on delivery is not available.</span>
                                             </div>
                                         </div>
                                         
@@ -895,5 +998,3 @@
 
     </script>
 @endpush
-
-

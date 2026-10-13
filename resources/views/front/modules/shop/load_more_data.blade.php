@@ -1,4 +1,6 @@
             @php
+                $colorArr = $colorArr ?? [];
+                $sizeArr = $sizeArr ?? [];
                 $filteredColors = [];
                 $i= 0;
             @endphp
@@ -106,10 +108,25 @@
                     </div>
                 </div>
             @empty
-                <div class="col-12 text-center py-5">
-    <i class="fa-solid fa-box-open" style="font-size: 48px; color: #ccc;"></i>
-    <p class="mt-3 fs-5">No products found</p>
-</div>
+                <div class="col-12">
+                    <div class="empty-products-wrap">
+                        <div class="empty-products-card">
+                            <div class="empty-products-icon" aria-hidden="true">
+                                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 7.5C3 6.67 3.67 6 4.5 6H19.5C20.33 6 21 6.67 21 7.5V18.5C21 19.33 20.33 20 19.5 20H4.5C3.67 20 3 19.33 3 18.5V7.5Z" stroke="currentColor" stroke-width="1.6"/>
+                                    <path d="M8 10H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                    <path d="M9 14H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                    <path d="M7.5 6L9 3.5H15L16.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <h4>No products found</h4>
+                            <p>Try a different search term or clear your filters to explore more pieces from our collection.</p>
+                            <div class="empty-products-actions">
+                                <a href="{{ route('front-shop.index') }}" class="empty-products-button">Clear filters</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             @endforelse
 
 

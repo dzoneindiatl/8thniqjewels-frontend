@@ -99,6 +99,30 @@ function selectVariant(el) {
 
 checkItemInCart();
 
+$(document).on('click', '.product-details-wrapper .quantity-cart-box .pro-qty .qtybtn', function () {
+    const $quantityInput = $(this).closest('.quantity-cart-box').find('.quantityInput');
+    const minValue = parseInt($quantityInput.attr('min'), 10);
+    const maxValue = parseInt($quantityInput.attr('max'), 10);
+    const minQuantity = Number.isNaN(minValue) ? 1 : minValue;
+    const maxQuantity = Number.isNaN(maxValue) ? 10 : Math.max(maxValue, minQuantity);
+    const inputQuantity = parseInt($quantityInput.val(), 10);
+    const quantity = Math.max(minQuantity, Math.min(Number.isNaN(inputQuantity) ? minQuantity : inputQuantity, maxQuantity));
+    const productId = $('.addToCartBtn').first().data('id');
+    const cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+    const cartItem = cartItems.find(item => item.productId == productId);
+
+    $quantityInput.val(quantity);
+
+    if (!cartItem) return;
+
+    cartItem.quantity = quantity;
+    cartItem.total = parseFloat(cartItem.price) * quantity;
+    localStorage.setItem('cartItems', JSON.stringify(cartItems));
+    localStorage.setItem('applied_coupon', []);
+    localStorage.setItem('coupon_discount', 0);
+    isLoginUser(cartItem.productId, quantity, cartItem.selectedVariants || {});
+});
+
     function initCustomSlider(images = []) {
         if (!images.length) return;        
         //console.log(images);
@@ -184,30 +208,19 @@ checkItemInCart();
 
 
     function checkItemInCart() {
-        const productId = $('#product_id').val();
+        const productId = $('.addToCartBtn').first().data('id');
         const cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+        const cartItem = cartItems.find(item => item.productId == productId);
+        const $quantityInput = $('#quantityInputBox');
 
-        let selected = {};
+        if (!$quantityInput.data('cartQuantityInitialized')) {
+            if (cartItem) {
+                $quantityInput.val(cartItem.quantity);
+            }
+            $quantityInput.data('cartQuantityInitialized', true);
+        }
 
-        $('li.active[data-type]').each(function () {
-            let type = ($(this).data('type') || '').toLowerCase(); // Normalize key
-            let value = $(this).data('value');
-            selected[type] = value;
-        });
-
-        let exists = cartItems.some(item => {
-            if (item.productId != productId) return false;
-
-            let variant = item.selectedVariants || {};
-            let keys1 = Object.keys(selected);
-            let keys2 = Object.keys(variant);
-
-            if (keys1.length !== keys2.length) return false;
-
-            return keys1.every(k => variant[k] === selected[k]);
-        });
-
-        if (exists) {
+        if (cartItem) {
             $('.addToCartText').html("Go To Cart");
         } else {
             $('.addToCartText').html("Add To Cart");

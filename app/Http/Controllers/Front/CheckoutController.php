@@ -128,69 +128,80 @@ class CheckoutController extends Controller
     }
 
 
+    private function containsMakeToOrderProduct($cartItems)
+    {
+        foreach ($cartItems as $item) {
+            $product = Product::find($item['productId'] ?? null);
 
+            if ($product && ((int) $product->qty <= 0 || (int) $product->in_stock === 0)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
     public function placeOrder(Request $request)
     {
         $resp = [];
 
         // Backend Order validation 
-        $login_user_id =  Auth::guard('customer')->user()->id;
+        $login_user_id = Auth::guard('customer')->user()->id;
         $userAvailableWalletAmount = $this->getuserWallet($login_user_id);
 
         $codMaxLimit = 50000;
         $invoiceSetting = InvoiceSetting::where('prefix', 'site')->first();
-        if(!empty($invoiceSetting)){
+        if (!empty($invoiceSetting)) {
             $codMaxLimit = $invoiceSetting->cash_on_limit;
         }
 
         $validation_error = '';
-        if(count($request->cartItems)==0){
+        if (count($request->cartItems) == 0) {
             $validation_error .= " </br> You should be alteast add 1 item in cart";
-        } 
-        if($request->sub_total < 0){
+        }
+        if ($request->sub_total < 0) {
             $validation_error .= " </br>Your order amount should be greater than zero";
         }
-        if($request->sub_total == 0){
+        if ($request->sub_total == 0) {
             $validation_error .= " </br> Your order amount cant be zero";
         }
-        if($request->wallet_amount > $userAvailableWalletAmount){
+        if ($request->wallet_amount > $userAvailableWalletAmount) {
             $validation_error .= " </br> You dont have exact amount in wallet";
-        } 
-        if($request->payment_mode =='cod' && $request->sub_total > $codMaxLimit){
+        }
+        if ($request->payment_mode == 'cod' && $request->sub_total > $codMaxLimit) {
             $validation_error .= " </br> You have reached maximum amount for COD order.";
-        } 
+        }
 
-        if(!empty($request->cartItems)){
-            foreach($request->cartItems as $cart){
+        if (!empty($request->cartItems)) {
+            foreach ($request->cartItems as $cart) {
                 $productId = $cart['productId'];
                 $quantity = $cart['quantity'];
                 $instock = $cart['instock'];
 
                 $product = Product::where('id', $productId)->first();
-                if(!empty($product)){
+                if (!empty($product)) {
                     // if($product->in_stock == 0){
                     //     $validation_error .= ' </br> You have some out of stock product into order items';
                     // }
 
                     $product_valient_sku = '';
-                    if(!empty($product_sku = $product->sku)){
+                    if (!empty($product_sku = $product->sku)) {
                         $product_valient_sku .= strtolower($product_sku = $product->sku);
                     }
-                    if(!empty($request->cartItems['selectedVariants']) && !empty($request->cartItems['selectedVariants']['colour'])){
-                        $product_valient_sku .= '_'. strtolower($request->cartItems['selectedVariants']['colour']);
+                    if (!empty($request->cartItems['selectedVariants']) && !empty($request->cartItems['selectedVariants']['colour'])) {
+                        $product_valient_sku .= '_' . strtolower($request->cartItems['selectedVariants']['colour']);
                     }
-                    if(!empty($request->cartItems['selectedVariants']) && !empty($request->cartItems['selectedVariants']['size'])){
-                        $product_valient_sku .= '_'. strtolower($request->cartItems['selectedVariants']['size']);
+                    if (!empty($request->cartItems['selectedVariants']) && !empty($request->cartItems['selectedVariants']['size'])) {
+                        $product_valient_sku .= '_' . strtolower($request->cartItems['selectedVariants']['size']);
                     }
                     $qtyVarient = ProductVariantCombination::where('product_id', $productId)->where('sku', $product_valient_sku)->select('qty')->first();
-                    if(!empty($qtyVarient)){
-                        if($qtyVarient->qty==0){
-                           // $validation_error .= ' </br> You have some out of stock product varient into order items';
-                        } else if($qtyVarient->qty < $quantity){
+                    if (!empty($qtyVarient)) {
+                        if ($qtyVarient->qty == 0) {
+                            // $validation_error .= ' </br> You have some out of stock product varient into order items';
+                        } else if ($qtyVarient->qty < $quantity) {
                             $validation_error .= ' </br> Product does not have suffcient quantity.';
                         }
                     }
-                    if(!empty($product->max_selling_units) && $product->max_selling_units!=0 &&  $quantity > $product->max_selling_units){
+                    if (!empty($product->max_selling_units) && $product->max_selling_units != 0 && $quantity > $product->max_selling_units) {
                         $validation_error .= ' </br> You have reached maximum quantity for product.';
                     }
 
@@ -204,34 +215,34 @@ class CheckoutController extends Controller
         $is_referal = 0;
         $referal_user_id = NULL;
 
-        if(!empty($request->coupon_id)){
+        if (!empty($request->coupon_id)) {
             /* Referal Code section */
-                $referalCoupon = User::whereRaw('? LIKE CONCAT(user_referral_code, "%")', [$request->coupon_id])
+            $referalCoupon = User::whereRaw('? LIKE CONCAT(user_referral_code, "%")', [$request->coupon_id])
                 ->where('is_active', 1)
                 ->first();
-                // if(empty($referalCoupon)){
-                //     $validation_error .= ' </br> Your referal code does not activated';
-                // } else {
-                //     $referalStatus = $this->applyReferal($request->coupon_id, $request->sub_total, $request->cart_items);
-                //     if($referalStatus->original['status']==false){
-                //         $validation_error .=   " </br> " . $referalStatus->original['message'];
-                //     }
-                //     // Apply Coupon VAlidation 
-                //     $is_referal = 1;
-                //     $referal_user_id = $referalCoupon->id;
-                // }
+            // if(empty($referalCoupon)){
+            //     $validation_error .= ' </br> Your referal code does not activated';
+            // } else {
+            //     $referalStatus = $this->applyReferal($request->coupon_id, $request->sub_total, $request->cart_items);
+            //     if($referalStatus->original['status']==false){
+            //         $validation_error .=   " </br> " . $referalStatus->original['message'];
+            //     }
+            //     // Apply Coupon VAlidation 
+            //     $is_referal = 1;
+            //     $referal_user_id = $referalCoupon->id;
+            // }
             /* Referal Code section */
 
-            if(empty($referalCoupon)){
+            if (empty($referalCoupon)) {
                 $couponDetail = Coupon::where('id', $request->coupon_id)->where('is_active', 1)->first();
                 $referal_user_id = $couponDetail->created_by;
                 $is_referal = 1;
-                if(empty($couponDetail)){
+                if (empty($couponDetail)) {
                     $validation_error .= ' </br> Your coupon does not activated';
                 } else {
                     $couponStatus = $this->applyCoupon($couponDetail->coupon_code, $request->sub_total, $request->cart_items);
-                    if($couponStatus->original['status']==false){
-                        $validation_error .=   " </br> " . $couponStatus->original['message'];
+                    if ($couponStatus->original['status'] == false) {
+                        $validation_error .= " </br> " . $couponStatus->original['message'];
                     }
                     // Apply Coupon VAlidation 
                 }
@@ -247,10 +258,17 @@ class CheckoutController extends Controller
         }
         // Backend Order validation 
 
-        
 
-        $ip_address = $request->ip(); 
+
+        $ip_address = $request->ip();
         if ($request->payment_mode == 'cod') {
+
+            if ($this->containsMakeToOrderProduct($request->cartItems ?? [])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Make-to-order products require 50% advance payment. Please select an online payment method.',
+                ], 422);
+            }
             // pending_amount
             // dd($request);
             $order_id = $this->createOrder(
@@ -266,30 +284,46 @@ class CheckoutController extends Controller
                 $request->shippingcharge,
                 $request->billing_id,
                 $request->shipping_id,
-                $request->cartItems
+                $request->cartItems,
+                $request->order_total ?? $request->sub_total
             );
             $resp['success'] = true;
             $resp['message'] = "Success";
             $resp['url'] = route('front-order.success', ['order_id' => encrypt($order_id)]);
             return response()->json($resp);
         } elseif ($request->payment_mode == 'razorpay') {
+            $cartItems = $request->cartItems ?? [];
+
+            $isMakeToOrder = $this->containsMakeToOrderProduct($cartItems);
+
+            $fullOrderTotal = (float) (
+                $request->order_total ?? $request->sub_total
+            );
+
+            $paymentAmount = $isMakeToOrder
+                ? round($fullOrderTotal * 0.50, 2)
+                : (float) $request->sub_total;
+
             $cartNotes = $request->cartItems;
             session()->put('cart_items', $cartNotes);
+            session()->put('checkout_ip_address', $ip_address);
             $post_fields = [
-                "amount" => $request->sub_total * 100,
+                "amount" => (int) round($paymentAmount * 100),
                 "currency" => "INR",
                 "receipt" => "Receipt",
                 "partial_payment" => false,
                 "first_payment_min_amount" => 200,
                 "notes" => [
-                    'is_referal'        => $is_referal,
-                    'referal_user_id'   => $referal_user_id,
-                    "coupon_id"         => $request->coupon_id,
-                    "coupon_discount"   => $request->coupon_discount,
-                    "shippingcharge"    => $request->shippingcharge,
-                    "billing_id"        => $request->billing_id,
-                    "shipping_id"       => $request->shipping_id,
-                    "wallet_amount"     => $request->wallet_amount,
+                    'is_referal' => $is_referal,
+                    'referal_user_id' => $referal_user_id,
+                    "coupon_id" => $request->coupon_id,
+                    "coupon_discount" => $request->coupon_discount,
+                    "shippingcharge" => $request->shippingcharge,
+                    "billing_id" => $request->billing_id,
+                    "shipping_id" => $request->shipping_id,
+                    "wallet_amount" => $request->wallet_amount,
+                    "order_total" => $fullOrderTotal,
+                    "is_make_to_order" => $isMakeToOrder ? 1 : 0,
                 ]
             ];
 
@@ -346,9 +380,9 @@ class CheckoutController extends Controller
         } elseif ($request->payment_mode == 'wallet') {
             $order_number = $this->random_strings(8);
 
-            $order_id = $this->createOrder($ip_address,$request->payment_mode, $request->wallet_amount, 'received',$is_referal,$referal_user_id , $request->coupon_id, $request->coupon_discount, $request->wallet_amount, $request->shippingcharge, $request->billing_id, $request->shipping_id, $request->cartItems);
+            $order_id = $this->createOrder($ip_address, $request->payment_mode, $request->wallet_amount, 'received', $is_referal, $referal_user_id, $request->coupon_id, $request->coupon_discount, $request->wallet_amount, $request->shippingcharge, $request->billing_id, $request->shipping_id, $request->cartItems, $request->order_total ?? $request->sub_total);
             Order::find($order_id)->update([
-                'payment_status'      => 'paid',
+                'payment_status' => 'paid',
             ]);
             $resp['success'] = true;
             $resp['url'] = route('front-order.success', ['order_id' => encrypt($order_id)]);
@@ -399,9 +433,18 @@ class CheckoutController extends Controller
             }
 
             if ($latestPayment) {
-                $wAmount = $latestPayment['notes']['wallet_amount'] ?? 0;
-                $payAmount = $latestPayment['amount'] / 100;
-                $totalAmt = $payAmount + $wAmount;
+                $wAmount = (float) ($latestPayment['notes']['wallet_amount'] ?? 0);
+
+                $payAmount = (float) $latestPayment['amount'] / 100;
+
+                // Amount collected in the first installment
+                $totalAmt = round($payAmount + $wAmount, 2);
+
+                // Full order total, passed from Razorpay order notes
+                $fullOrderTotal = (float) (
+                    $latestPayment['notes']['order_total'] ?? $totalAmt
+                );
+                $ip_address = session()->get('checkout_ip_address', $request->ip());
                 // Create the order in Laravel
                 $order_id = $this->createOrder(
                     $ip_address,
@@ -416,17 +459,19 @@ class CheckoutController extends Controller
                     $latestPayment['notes']['shippingcharge'] ?? 0,
                     $latestPayment['notes']['billing_id'] ?? null,
                     $latestPayment['notes']['shipping_id'] ?? null,
-                    session()->get('cart_items')
+                    session()->get('cart_items'),
+                    $fullOrderTotal
                 );
 
 
                 // Save payment ID
                 Order::find($order_id)->update([
                     'razorpay_payment_id' => $latestPayment['id'],
-                    'payment_status'      => 'paid',
+                    'payment_status' => 'paid',
                 ]);
 
                 session()->forget('cart_items');
+                session()->forget('checkout_ip_address');
 
                 return redirect()->route('front-order.success', ['order_id' => encrypt($order_id)]);
             }
@@ -436,14 +481,14 @@ class CheckoutController extends Controller
     }
 
 
-    public function createOrder($ip_address,$payment_method, $amount, $order_status, $is_referal, $referal_user_id, $coupon_id, $coupon_discount, $wallet_amount = 0, $shippingcharge, $billingId, $shippingId, $checkout_data)
+    public function createOrder($ip_address, $payment_method, $amount, $order_status, $is_referal, $referal_user_id, $coupon_id, $coupon_discount, $wallet_amount = 0, $shippingcharge, $billingId, $shippingId, $checkout_data, $order_total = null)
     {
 
         //     DB::beginTransaction();
         //   try {
 
         $debitFromWallet = 0;
-        $user_id =  Auth::guard('customer')->user()->id;
+        $user_id = Auth::guard('customer')->user()->id;
         $customerName = Auth::guard('customer')->user()->name ?? 'Customer';
         $customerEmail = Auth::guard('customer')->user()->email ?? 'Customer';
 
@@ -462,13 +507,16 @@ class CheckoutController extends Controller
         }
 
         $taxPrice = 0;
-        $is_half_payment = 0;
+        $is_make_to_order = false;
+
         foreach ($checkout_data as $item) {
             $taxPrice += $item['tax_price'];
 
-            $product = Product::where('id', $item['productId'])->where('in_stock',0)->first(); 
-            if(!empty($product)){
-                $is_half_payment = 1;
+            $product = Product::find($item['productId'] ?? null);
+
+            if ($product && ((int) $product->qty <= 0 || (int) $product->in_stock === 0)) {
+                $is_make_to_order = true;
+                break;
             }
         }
 
@@ -486,7 +534,7 @@ class CheckoutController extends Controller
             $couponChildCategoryIds = !empty($coupon->child_category) ? array_filter(json_decode($coupon->child_category, true)) : null;
             $order->coupon_name = $coupon->coupon_code;
             $order->coupon_discount = round($coupon_discount, 2);
-            $discount  = round($coupon_discount, 2);
+            $discount = round($coupon_discount, 2);
         }
 
         // $order->order_number = $this->random_strings(8);
@@ -500,25 +548,37 @@ class CheckoutController extends Controller
         $order->sub_total = floor($amount + $discount);
 
         $order->is_referal = $is_referal;
-        $order->referal_user_id = $referal_user_id?? 0;
-        $order->coupon_name  = $coupon_id;
+        $order->referal_user_id = $referal_user_id ?? 0;
+        $order->coupon_name = $coupon_id;
         $order->coupon_discount = $coupon_discount;
 
-        $order->total = floor($amount);
-        if(isset($checkout_data['instock']) && $checkout_data['instock']==0){
-            $order->pending_amount = floor($amount);
-        }
-        else {
-            $order->pending_amount = 0;
-        }
+        $full_order_total = is_numeric($order_total)
+            ? (float) $order_total
+            : (float) $amount;
+
+        $paid_amount = in_array($order_status, ['paid', 'received'], true)
+            ? (float) $amount
+            : 0;
+
+        $order->total = round($full_order_total, 2);
+
+        $order->is_make_to_order = $is_make_to_order ? 1 : 0;
+        $order->is_half_payment = $is_make_to_order ? 1 : 0;
+
+        $order->pending_amount = $is_make_to_order
+            ? max(0, round($full_order_total - $paid_amount, 2))
+            : 0;
+
         $order->payment_method = $payment_method;
         $order->payment_status = $order_status;
-        $order->payment_status = 'pending';
+        $order->ip_address = $ip_address;
+
+        $order->save();
         $order->ip_address = $ip_address;
         $order->save();
 
-        if($order->referal_user_id){
-            
+        if ($order->referal_user_id) {
+
         }
 
         $order_id = $order->id;
@@ -562,9 +622,9 @@ class CheckoutController extends Controller
                 if (empty($couponSubCategoryIds)) {
                     $applyDiscount = true;
                 } elseif (in_array($productSubCategoryId, $couponSubCategoryIds)) {
-                    if(empty($couponChildCategoryIds)){
+                    if (empty($couponChildCategoryIds)) {
                         $applyDiscount = true;
-                    } elseif (in_array($productChildCategoryId, $couponChildCategoryIds)){
+                    } elseif (in_array($productChildCategoryId, $couponChildCategoryIds)) {
                         $applyDiscount = true;
                     }
                 }
@@ -585,9 +645,9 @@ class CheckoutController extends Controller
                 if (empty($couponSubCategoryIds)) {
                     $applyDiscount = true;
                 } elseif (in_array($productSubCategoryId, $couponSubCategoryIds)) {
-                    if(empty($couponChildCategoryIds)){
+                    if (empty($couponChildCategoryIds)) {
                         $applyDiscount = true;
-                    } elseif (in_array($productChildCategoryId, $couponChildCategoryIds)){
+                    } elseif (in_array($productChildCategoryId, $couponChildCategoryIds)) {
                         $applyDiscount = true;
                     }
                 }
@@ -603,10 +663,10 @@ class CheckoutController extends Controller
             $order_items->selling_price = $item['sellingPrice'];
             $order_items->discount_amount = $total_discount;
             $order_items->tax_amount = $item['tax_price'];
-            $order_items->sub_total = (($item['quantity'] * $item['sellingPrice']) - ($item['tax_price'] +  $total_discount));
+            $order_items->sub_total = (($item['quantity'] * $item['sellingPrice']) - ($item['tax_price'] + $total_discount));
             $order_items->total = (($item['quantity'] * $item['sellingPrice']) - $total_discount);
             // $order_items->pending_amount =  0;
-            $order_items->combination =  json_encode($item['selectedVariants']);
+            $order_items->combination = json_encode($item['selectedVariants']);
             $order_items->order_status_id = 1; // Pending
             $order_items->status = 'pending';
             $order_items->save();
@@ -724,7 +784,7 @@ class CheckoutController extends Controller
         // 3. Placeholder Data
         $data = [
             'CUSTOMER_NAME' => $customerName,
-            'ORDER_ID'      => $ordernumber,
+            'ORDER_ID' => $ordernumber,
             'ORDER_DETAILS' => $orderDetails,
         ];
 
@@ -782,13 +842,13 @@ class CheckoutController extends Controller
         $address = UserAddress::getShippingAddress('shipping', $addressId);
         $pincode = $address['shipping_pincode'];
 
-        if(!empty($request->productData)){
+        if (!empty($request->productData)) {
             $productIds = array_column($request->productData, 'productId');
             $product = Product::whereIn('id', $productIds)->select('weight', 'weight_type')->get();
             $totalWeight = 0;
             foreach ($product as $products) {
                 $weight = $products->weight;
-                if(!empty($weight)){
+                if (!empty($weight)) {
                     if ($products->weight_type == 'kg') {
                         $weight = $products->weight * 1000;
                     }
@@ -798,7 +858,7 @@ class CheckoutController extends Controller
         }
 
         $productweight = $totalWeight ?? 250;
-        $shippingPrice =  getShippingCharge($pincode, $productweight, $totalAmountcart);
+        $shippingPrice = getShippingCharge($pincode, $productweight, $totalAmountcart);
         return response()->json([
             'success' => true,
             'message' => 'Shipping Price fetched successfully.',
@@ -838,15 +898,15 @@ class CheckoutController extends Controller
     {
         $userwallet = 0;
         $userwalletArr = User::where('id', $userId)->first();
-        if(!empty($userwalletArr)){
+        if (!empty($userwalletArr)) {
             $userwallet = $userwalletArr->wallet_avl_balance;
         }
         return $userwallet;
     }
 
-    public function applyReferal ($coupon_id=null, $sub_total=null, $cart_items=null)
+    public function applyReferal($coupon_id = null, $sub_total = null, $cart_items = null)
     {
-        $userId =  Auth::guard('customer')->check() ? Auth::guard('customer')->id() : null;
+        $userId = Auth::guard('customer')->check() ? Auth::guard('customer')->id() : null;
 
         // $request->validate([
         //     'coupon_id' => 'required|string',
@@ -855,51 +915,51 @@ class CheckoutController extends Controller
         // ]);
 
         /* Referal Code section */
-            $referalCoupon = User::whereRaw('? LIKE CONCAT(user_referral_code, "%")', [$coupon_id])
+        $referalCoupon = User::whereRaw('? LIKE CONCAT(user_referral_code, "%")', [$coupon_id])
             ->where('is_active', 1)
             ->first();
-            if ($referalCoupon) { 
-                $discount_value = explode('@',$coupon_id);
-                $discount_value = end($discount_value);
-                $discount =  ($sub_total * $discount_value) / 100;
+        if ($referalCoupon) {
+            $discount_value = explode('@', $coupon_id);
+            $discount_value = end($discount_value);
+            $discount = ($sub_total * $discount_value) / 100;
 
-                return response()->json([
-                    'status'     => true,
-                    'message'    => 'Referal Code applied successfully.',
-                    'discount'   => round($discount, 2),
-                    // 'coupon.coupon_code'  => $request->coupon_code,
-                    // 'coupon.id'  => $request->coupon_code,
-                    // 'discountType' => 'percentage',
-                   // 'coupon'   => $coupon->only('id', 'coupon_code', 'discount_type', 'discount_value'),
-                    'coupon' => 
-                        [
-                            'discountType' => 'percentage',
-                            'coupon_code' => $coupon_id,
-                            'id' => $coupon_id,
-                        ]
-                 ]);
-            } else {
-                return response()->json([
-                    'status'     => false,
-                    'message'    => 'Referal Code not valid.',
-                    'discount'   => round($discount, 2),
-                    'coupon' => 
-                        [
-                            'discountType' => 'percentage',
-                            'coupon_code' => $request->coupon_id,
-                            'id' => $request->coupon_id,
-                        ]
-                 ]);
-            }
+            return response()->json([
+                'status' => true,
+                'message' => 'Referal Code applied successfully.',
+                'discount' => round($discount, 2),
+                // 'coupon.coupon_code'  => $request->coupon_code,
+                // 'coupon.id'  => $request->coupon_code,
+                // 'discountType' => 'percentage',
+                // 'coupon'   => $coupon->only('id', 'coupon_code', 'discount_type', 'discount_value'),
+                'coupon' =>
+                    [
+                        'discountType' => 'percentage',
+                        'coupon_code' => $coupon_id,
+                        'id' => $coupon_id,
+                    ]
+            ]);
+        } else {
+            return response()->json([
+                'status' => false,
+                'message' => 'Referal Code not valid.',
+                'discount' => round($discount, 2),
+                'coupon' =>
+                    [
+                        'discountType' => 'percentage',
+                        'coupon_code' => $request->coupon_id,
+                        'id' => $request->coupon_id,
+                    ]
+            ]);
+        }
 
         /* Referal Code section */
     }
 
-    
 
-    public function applyCoupon($coupon_code=null, $cart_total=null, $cart_items=null)
+
+    public function applyCoupon($coupon_code = null, $cart_total = null, $cart_items = null)
     {
-        $userId =  Auth::guard('customer')->check() ? Auth::guard('customer')->id() : null;
+        $userId = Auth::guard('customer')->check() ? Auth::guard('customer')->id() : null;
 
         $coupon = Coupon::where('coupon_code', $coupon_code)
             ->where('is_active', 1)
@@ -916,7 +976,7 @@ class CheckoutController extends Controller
             return response()->json(['status' => false, 'message' => 'Invalid or inactive coupon.']);
         }
         $checkCategory = $coupon->category_id;
-        $checkSubCat   = !empty($coupon->sub_categories) ? array_filter(json_decode($coupon->sub_categories, true)) : null;
+        $checkSubCat = !empty($coupon->sub_categories) ? array_filter(json_decode($coupon->sub_categories, true)) : null;
         if ($checkCategory || $checkSubCat) {
             $productIds = collect($cart_items)
                 ->pluck('productId')
@@ -933,7 +993,7 @@ class CheckoutController extends Controller
                 return response()->json(['status' => false, 'message' => 'Cart contains no valid public products.']);
             }
 
-            $productCategoryIds    = $products->pluck('main_category_id')->unique()->toArray();
+            $productCategoryIds = $products->pluck('main_category_id')->unique()->toArray();
             $productSubCategoryIds = $products->pluck('main_sub_category_id')->unique()->toArray();
 
             // Category check
@@ -1028,10 +1088,10 @@ class CheckoutController extends Controller
         }
 
         return response()->json([
-            'status'   => true,
-            'message'  => 'Coupon applied successfully.',
+            'status' => true,
+            'message' => 'Coupon applied successfully.',
             'discount' => round($discount, 2),
-            'coupon'   => $coupon->only('id', 'coupon_code', 'discount_type', 'discount_value'),
+            'coupon' => $coupon->only('id', 'coupon_code', 'discount_type', 'discount_value'),
         ]);
     }
 }

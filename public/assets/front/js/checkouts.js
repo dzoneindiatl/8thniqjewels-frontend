@@ -213,10 +213,10 @@ $(document).ready(function () {
 });
 
 /*Same as billing address*/
-$('.select_shipping_address').click(function(){
-    if($(this).prop('checked') === true){
+$('.select_shipping_address').click(function () {
+    if ($(this).prop('checked') === true) {
         $('#main_shipping').slideUp();
-        $('#same_as_billing').prop('checked',false);        
+        $('#same_as_billing').prop('checked', false);
     }
 });
 
@@ -246,22 +246,26 @@ $.ajaxSetup({
 
 
 var totalShippingCharge = 0;
-$('#pay_now').off('click').on('click', function (e) { 
+$('#pay_now').off('click').on('click', function (e) {
     let that = $(this);
-    that.prop('disabled', true).text('Please wait...');
     $('.pay_error').html('');
     $('.pay_success').html('');
 
     var cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
     console.log(' cart items ', cartItems.length);
-    if (parseInt(cartItems.length) === 0) { 
+    if (parseInt(cartItems.length) === 0) {
         $('#pay_now').remove();
         $('#shoopping_continue').show();
         return false;
     }
 
-    let terms = $('#terms').is(':checked'); 
-    if (terms===false) { 
+    if (!$('.payment_type:checked').length && !$('#wallet').is(':checked')) {
+        $('.pay_error').html('Please select a payment method.');
+        return false;
+    }
+
+    let terms = $('#terms').is(':checked');
+    if (terms === false) {
         $('.pay_error').html('Please checked "Term & Condition" policy.');
         return;
     }
@@ -283,7 +287,7 @@ $('#pay_now').off('click').on('click', function (e) {
         $('.pay_error').html('');
     }
 
-    if($('[id="cash"]:checked').length != 0 && $('[id="wallet"]:checked').length != 0){
+    if ($('[id="cash"]:checked').length != 0 && $('[id="wallet"]:checked').length != 0) {
         e.preventDefault();
         $('.pay_error').html('You cant order with COD & Wallet Togeter.');
         return;
@@ -298,15 +302,7 @@ $('#pay_now').off('click').on('click', function (e) {
     var isQuantity = true;
     cartItems.forEach(function (item) {
         // get variant color and size combo exact qty
-        let product_sku = item.sku.toLowerCase();
-        let variants = item.selectedVariants || {};
-
-        //  sku accoring to variant && product type 
-        let product_selected_variant_sku = product_sku;
-        if(item.productType==2){
-            product_selected_variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
-        }
-        //  sku accoring to variant && product type
+        const { sku: product_selected_variant_sku } = getVariantSku(item);
 
         var getExactVariantComboQty = 0;
         const originalHtmlMinus = $(".addToDecQtyBtn").html();
@@ -320,63 +316,65 @@ $('#pay_now').off('click').on('click', function (e) {
                 _token: $('meta[name="csrf-token"]').attr('content'),
                 product_id: item.productId,
                 sku: product_selected_variant_sku,
-                },
+            },
             success: function (response) {
                 getExactVariantComboQty = response;
 
-                console.log('maxSellingQty 1 : ',maxSellingQty);
-                if(parseInt(maxSellingQty) > parseInt(getExactVariantComboQty) || parseInt(maxSellingQty)==0){
+                console.log('maxSellingQty 1 : ', maxSellingQty);
+                if (parseInt(maxSellingQty) > parseInt(getExactVariantComboQty) || parseInt(maxSellingQty) == 0) {
                     maxSellingQtyNew = getExactVariantComboQty;
                 } else {
                     maxSellingQtyNew = maxSellingQty;
                 }
-                console.log('getExactVariantComboQty : ',getExactVariantComboQty);
-                console.log('maxSellingQty 2 : ',maxSellingQty);
-                console.log('maxSellingQtyNew 3 : ',maxSellingQtyNew);
+                console.log('getExactVariantComboQty : ', getExactVariantComboQty);
+                console.log('maxSellingQty 2 : ', maxSellingQty);
+                console.log('maxSellingQtyNew 3 : ', maxSellingQtyNew);
 
-                $(".addToDecQtyBtn").attr("disabled",false).html(originalHtmlMinus);
-                $(".addToNewQtyBtn").attr("disabled",false).html(originalHtmlPlus);
+                $(".addToDecQtyBtn").attr("disabled", false).html(originalHtmlMinus);
+                $(".addToNewQtyBtn").attr("disabled", false).html(originalHtmlPlus);
             },
             error: function (xhr) {
-               // alert('Failed to add to cart. Please try again.');
+                // alert('Failed to add to cart. Please try again.');
             }
         });
         // get variant color and size combo exact qty
 
         var quantity = item.quantity;
-        if(parseInt(quantity) > parseInt(maxSellingQtyNew) &&  maxSellingQtyNew !=0){
+        if (parseInt(quantity) > parseInt(maxSellingQtyNew) && maxSellingQtyNew != 0) {
             isQuantity = false;
             e.preventDefault();
             $('.pay_error').show();
             $(".pay_error").html("You can't order above max quantity of product, Your product quantity is exceed : " + quantity);
-            setTimeout(function(){  $(".pay_error").html("");  }, 5000);
-        } 
+            setTimeout(function () { $(".pay_error").html(""); }, 5000);
+        }
     });
-    if(!isQuantity){
+    if (!isQuantity) {
         return false;
     }
     // Quantity Validation on checkout page
 
-    console.log( 'calculate cart : ', cartItems);
+    console.log('calculate cart : ', cartItems);
     var totals = calculateCartTotals(cartItems);
+    var fullOrderTotal = totals.fullOrderTotal;
     var subTotal = totals.finalAmount;
-    
+    var wallet_amount = 0;
+
     // COD order should be less than 500 validation
-    if($('[id="cash"]:checked').val() =='cod' && subTotal > codMaxLimit){
-        $(".pay_error").html("Cash on Delivery available for orders up to ₹"+codMaxLimit);
+    if ($('[id="cash"]:checked').val() == 'cod' && subTotal > codMaxLimit) {
+        $(".pay_error").html("Cash on Delivery available for orders up to ₹" + codMaxLimit);
         return false;
     } else {
         $(".pay_error").html("");
     }
-    
-    if(parseInt(subTotal) == 0){ //  order amount should be greater than 0 rs validation
+
+    if (parseInt(subTotal) == 0) { //  order amount should be greater than 0 rs validation
         $(".pay_error").html("You cant process order with zero amount.");
         return false;
     } else {
         $(".pay_error").html("");
     }
-    
-    if(parseInt(subTotal) < 0){ //  order amount should be greater than 0 rs validation
+
+    if (parseInt(subTotal) < 0) { //  order amount should be greater than 0 rs validation
         e.preventDefault();
         $(".pay_error").html("You cant process order with minus amount.");
         return false;
@@ -385,17 +383,17 @@ $('#pay_now').off('click').on('click', function (e) {
     }
     // COD order should be less than 5000 validation
 
-    var payment_type = $('.payment_type:checked').val(); 
-    
+    var payment_type = $('.payment_type:checked').val();
+
     var walletCheckbox = document.getElementById('wallet');
     var wallet_type = walletCheckbox?.checked ? "wallet" : null;
 
     var codCheckbox = document.getElementById('cash');
     var cod_type = codCheckbox?.checked ? "cod" : null;
-    console.log('wallet_type : ' , wallet_type);
-    console.log('cod_type : ' , cod_type);
+    console.log('wallet_type : ', wallet_type);
+    console.log('cod_type : ', cod_type);
 
-    if (wallet_type && cod_type !='cod') {
+    if (wallet_type && cod_type != 'cod') {
         // Get real available waller balance 
         var walletBalance = 0;
         $.ajax({
@@ -411,19 +409,18 @@ $('#pay_now').off('click').on('click', function (e) {
         // Get real available waller balance 
 
         // var walletBalance = parseFloat(
-            // document.getElementById('wallet_amount').innerText.replace(/[^\d.]/g, '')
-            // parseFloat(localStorage.getItem('uw_amount'))
+        // document.getElementById('wallet_amount').innerText.replace(/[^\d.]/g, '')
+        // parseFloat(localStorage.getItem('uw_amount'))
         // ) || 0;
         console.log('user_id  : ', USERID);
         console.log('walletBalance  : ', walletBalance);
-       
+
         // var subTotal = parseFloat($('.finalAmount').text().replace(/[^\d.]/g, ''));
-        var wallet_amount = 0;
         if (walletCheckbox?.checked) {
             if (parseFloat(walletBalance) >= (subTotal)) {
                 wallet_amount = subTotal;
                 payment_type = "wallet";
-                // subTotal = 0;
+                subTotal = 0;
             } else if (payment_type === "razorpay") {
                 wallet_amount = walletBalance;
                 subTotal = subTotal - walletBalance;
@@ -444,12 +441,14 @@ $('#pay_now').off('click').on('click', function (e) {
         coupon_id: localStorage.getItem('coupon_id'),
         coupon_discount: parseFloat(localStorage.getItem('coupon_discount')) || 0,
         wallet_amount: wallet_amount,
+        order_total: fullOrderTotal,
+        pending_amount: totals.pendingAmount,
         billing_id: billing_id,
         shipping_id: shipping_id,
         shippingcharge: totalShippingCharge,
     };
     // console.log('postData : ', postData); return false;
-    that.prop('disabled', false).text('Pay Now');
+    that.prop('disabled', true).text('Please wait...');
     var url = window.location.origin + "/place-order";
     $.ajax({
         type: "POST",
@@ -460,10 +459,10 @@ $('#pay_now').off('click').on('click', function (e) {
         },
         data: JSON.stringify(postData),
         success: function (data) {
-            if (data.success==false) {
+            if (data.success == false) {
                 console.log(' final order response ', data);
                 $(".pay_error").html(data.message);
-                setTimeout(function(){  $(".pay_error").html("");  }, 5000);
+                setTimeout(function () { $(".pay_error").html(""); }, 5000);
             } else {
                 if (payment_type === "wallet" && data.success) {
                     localStorage.removeItem('cartItems');
@@ -506,13 +505,13 @@ $('#pay_now').off('click').on('click', function (e) {
                             rzp1.open();
                         }
                     }
-                }  else if (payment_type == 'phonepay') {
+                } else if (payment_type == 'phonepay') {
                     if (data.success) {
                         that.prop('disabled', false).text('Pay Now');
                         $('.pay_success').html("You are redirecting to Phone Pay App");
-                        setTimeout(function(){  
-                            $(".pay_success").html(""); 
-                            window.location.href = data.url;  
+                        setTimeout(function () {
+                            $(".pay_success").html("");
+                            window.location.href = data.url;
                         }, 2000);
                     } else {
                         $(".pay_error").html("Something went wrong with PhonePay Payment API");
@@ -653,10 +652,8 @@ function renderCart() {
     var cartOutOfStock = [];
     var cartAllItems = JSON.parse(localStorage.getItem('cartItems')) || [];
     cartAllItems.forEach(function (item, index) {
-        let variants = item.selectedVariants || {};
         //  product is out of stock 
-        // let variant_sku = variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
-        
+
         $.ajax({
             url: isOutOfStock,
             type: 'POST',
@@ -668,7 +665,7 @@ function renderCart() {
                 // variant_sku: variant_sku,
             },
             success: function (response) {
-                if(!response){
+                if (!response) {
                     // cartItems.push(item);
                 } else {
                     cartOutOfStock.push(item);
@@ -676,12 +673,12 @@ function renderCart() {
                 cartItems.push(item);
             },
             error: function (xhr) {
-            // alert('Failed to add to cart. Please try again.');
+                // alert('Failed to add to cart. Please try again.');
             }
         });
         //  product is out of stock 
     });
-    if(cartOutOfStock!=''){
+    if (cartOutOfStock != '') {
         document.addEventListener("DOMContentLoaded", function () {
             var myModal = new bootstrap.Modal(document.getElementById('out-of-stock-product'));
             myModal.show();
@@ -689,8 +686,8 @@ function renderCart() {
         // confirm('You have some out of stock product in cart, You can buy these product when will be in stock.');
         console.log(' cartItems new ', cartItems);
     }
-    
-    console.log(' render cart ', cartItems);  
+
+    console.log(' render cart ', cartItems);
     var $container = $('#checkout-cart-container');
     let couponDiscount = parseFloat(localStorage.getItem('coupon_discount')) || 0;
     if (cartItems.length === 0) {
@@ -714,26 +711,13 @@ function renderCart() {
     console.log(' before loop ', cartItems);
     cartItems.forEach(function (item) {
         qty = item.quantity;
-        if(item.instock==0){
+        if (item.instock == 0) {
             $('.codPaymentDiv').hide();
-            sellingPrice = item.sellingPrice * (50 /100);
-        } else {
-            sellingPrice = item.sellingPrice;
         }
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
-        } else {
-            itemPrice = item.price;
-        }
-        
-        
+        sellingPrice = item.sellingPrice;
+        itemPrice = item.price;
         totalMrp += itemPrice * item.quantity;
-        // if (item.discountType == "flat") {
-        //     totalDiscount += parseInt(item.discountAmount);
-        // } else if (item.discountType == "percentage") {
-        //     totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
-        // }
-        totalDiscount = (itemPrice * item.quantity) - (sellingPrice * item.quantity);
+        totalDiscount += (itemPrice - sellingPrice) * item.quantity;
 
         taxOption = item.tax_option;
         totalTaxPrice += item.tax_price;
@@ -772,9 +756,13 @@ function renderCart() {
     }
 
     console.log(totalShippingCharge);
-    let finalAmount = grandTotal + totalShippingCharge;
+    const orderTotals = calculateCartTotals(cartItems);
+    let finalAmount = orderTotals.finalAmount;
+    $('.finalAmount').closest('tr').find('td:first').text(
+        orderTotals.pendingAmount > 0 ? '50% deposit due now' : 'Cart total'
+    );
     // Update Summary
-    
+
     // Maanage COD checkbox text value 
     if (totalMrp > 5000) {
         $(".cod_value").html('Not Available');
@@ -822,7 +810,7 @@ function renderCart() {
     }
     $('#delivery').text(`₹${delivery.toLocaleString()}`);
     // $('#total-items').text(cartItems.length);
-    $('#total-items').html(qty); 
+    $('#total-items').html(qty);
 }
 
 
@@ -833,42 +821,64 @@ function calculateCartTotals(cartItems) {
     let totalDiscount = 0;
     let totalTaxPrice = 0;
     let taxOption = 'inclusive';
+    let fullProductTotal = 0;
+    let depositProductTotal = 0;
+    let makeToOrderPending = 0;
 
     cartItems.forEach(function (item) {
+        const quantity = Number(item.quantity) || 0;
+        const itemPrice = Number(item.price) || 0;
+        const sellingPrice = Number(item.sellingPrice) || 0;
+        const itemTotal = sellingPrice * quantity;
+        const isMakeToOrder = Number(item.instock) === 0;
 
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
+        totalMrp += itemPrice * quantity;
+        totalDiscount += (itemPrice - sellingPrice) * quantity;
+        fullProductTotal += itemTotal;
+        if (isMakeToOrder) {
+            depositProductTotal += itemTotal / 2;
+            makeToOrderPending += itemTotal / 2;
         } else {
-            itemPrice = item.price;
-        }
-
-        totalMrp += itemPrice * item.quantity;
-
-        if (item.discountType == "flat") {
-            totalDiscount += parseInt(item.discountAmount);
-        } 
-        else if (item.discountType == "percentage") {
-            totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
+            depositProductTotal += itemTotal;
         }
 
         taxOption = item.tax_option;
-        totalTaxPrice += item.tax_price;
+        const itemTax = Number(item.tax_price) || 0;
+        totalTaxPrice += itemTax;
+        if (taxOption === 'exclusive') {
+            depositProductTotal -= isMakeToOrder ? itemTax / 2 : 0;
+            depositProductTotal += itemTax;
+            makeToOrderPending += isMakeToOrder ? itemTax / 2 : 0;
+        }
     });
 
-    let subTotal = totalMrp - totalDiscount;
-
     let couponDiscount = parseFloat(localStorage.getItem('coupon_discount')) || 0;
-
+    let shippingCharge = Number(totalShippingCharge) || 0;
+    let exclusiveTax = taxOption === 'exclusive' ? totalTaxPrice : 0;
+    let fullOrderTotal = fullProductTotal + exclusiveTax + shippingCharge - couponDiscount;
+    let hasMakeToOrderItem = cartItems.some(item => Number(item.instock) === 0);
+    let dueNowTotal = hasMakeToOrderItem
+        ? depositProductTotal + shippingCharge - couponDiscount
+        : fullOrderTotal;
+    let pendingAmount = hasMakeToOrderItem
+        ? Math.max(0, fullOrderTotal - dueNowTotal)
+        : 0;
+    let subTotal = totalMrp - totalDiscount;
     let grandTotal = subTotal - couponDiscount;
-
-    let finalAmount;
-
-    if (taxOption == 'inclusive') {
-        finalAmount = grandTotal + totalShippingCharge;
-    } else {
-        finalAmount = grandTotal + totalTaxPrice + totalShippingCharge;
-    }
-
+    let finalAmount = dueNowTotal;
+ console.log('calculateCartTotals : ', {
+        totalMrp,
+        totalDiscount,
+        subTotal,
+        couponDiscount,
+        grandTotal,
+        totalTaxPrice,
+        taxOption,
+        finalAmount,
+        fullOrderTotal,
+        pendingAmount,
+        hasMakeToOrderItem
+    });
     return {
         totalMrp,
         totalDiscount,
@@ -877,7 +887,10 @@ function calculateCartTotals(cartItems) {
         grandTotal,
         totalTaxPrice,
         taxOption,
-        finalAmount
+        finalAmount,
+        fullOrderTotal,
+        pendingAmount,
+        hasMakeToOrderItem
     };
 }
 

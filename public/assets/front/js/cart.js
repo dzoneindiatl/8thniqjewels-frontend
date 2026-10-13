@@ -5,32 +5,35 @@ $('.mini-cart-btn').on('click', function () {
     displayCartItems(notRequiredQtyAjaxClickonQtyBtn);
 });
 
-function getSelectedVariants(cartItems = []) {
+function getSelectedVariants() {
     let selected = {};
 
-    const productId = $('#product_id').val();
-
-    // $('li.active[data-type]').each(function () {
     $('.s-variant.active').each(function () {
-        let type = $(this).data('type').toLowerCase();
+        let type = String($(this).data('type') || '').toLowerCase();
         let value = $(this).data('value');
-        selected[type] = value;
+        if (type && value) {
+            selected[type] = value;
+        }
     });
 
-    let exists = cartItems.some(item => {
-        if (item.productId != productId) return false;
+    return selected;
+}
 
-        let variant = item.selectedVariants || {};
-        let keys1 = Object.keys(selected);
-        let keys2 = Object.keys(variant);
+function getVariantSku(item) {
+    const baseSku = String(item.sku || '').trim().toLowerCase();
+    const variantValues = Object.values(item.selectedVariants || {})
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+    const variantSuffix = Number(item.productType) === 2 ? variantValues.join('_') : '';
 
-        if (keys1.length !== keys2.length) return false;
+    return {
+        sku: variantSuffix ? `${baseSku}_${variantSuffix}` : baseSku,
+        variantSuffix
+    };
+}
 
-        return keys1.every(k => variant[k] === selected[k]);
-    });
-
-
-    return exists ? null : selected;
+function escapeCartHtml(value) {
+    return $('<div>').text(value == null ? '' : String(value)).html();
 }
 
 $(document).on('click', '.addToCartBtn', function () {  
@@ -46,25 +49,32 @@ $(document).on('click', '.addToCartBtn', function () {
     let discountType = button.data('discounttype');
     let discountAmount = button.data('discount');
     let rawTaxArr = button.attr('data-tax-arr');
-    let quantity = $("#quantityInputBox").val() || 1;
+    let quantity = parseInt($("#quantityInputBox").val(), 10) || 1;
     let cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
 
 
     $('#addtocatt').show();
-    var selectedVariants = {};
-    // For not not valirent or color attribute
-    selectedVariants = getSelectedVariants(cartItems);
-    // if (!selectedVariants) {
-    //     let modal = new bootstrap.Modal(document.getElementById('addtocatt'));
-    //     modal.show();
-    //     return;
-    // }
+    let selectedVariants = getSelectedVariants();
 
-    if ($('li[data-type="size"]').length && !selectedVariants['size']) {
+    if ($('li[data-type="size"]').length && !selectedVariants.size) {
          alert("Please select a size.");
          return;
     }
     console.log('selectedVariants 123 : '+selectedVariants);
+
+    let existingItem = cartItems.find(item => item.productId == productId);
+    if (existingItem) {
+        existingItem.quantity = quantity;
+        existingItem.total = parseFloat(existingItem.price) * quantity;
+        localStorage.setItem('cartItems', JSON.stringify(cartItems));
+        localStorage.setItem('applied_coupon', []);
+        localStorage.setItem('coupon_discount', 0);
+        isLoginUser(existingItem.productId, quantity, existingItem.selectedVariants || {});
+        displayCartItems(true);
+        $('#addtocatt').show();
+        return;
+    }
+
     let productData = {
         randomId: 'prod_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
         productId,
@@ -85,20 +95,6 @@ $(document).on('click', '.addToCartBtn', function () {
     $('.addToCartText').html("Go To Cart");
     if (isLoggedIn) {
         isLoginUser(productData.productId, quantity, selectedVariants);
-    }
-
-    let isExist = cartItems.some(item => 
-        item.productId == productId 
-       // && JSON.stringify(item.selectedVariants) === JSON.stringify(selectedVariants)
-    );
-
-    if (isExist) {
-        //showFlashMessage("This product with selected options is already in your cart.");
-        console.log('first');
-        var notRequiredQtyAjaxClickonQtyBtn = true;
-        displayCartItems(notRequiredQtyAjaxClickonQtyBtn);
-        $('#addtocatt').show();
-        return; // Stop here, don’t add duplicate
     }
 
     console.log("Product added to cart successfully");
@@ -144,24 +140,19 @@ function displayCartItems(notRequiredQtyAjaxClickonQtyBtn) {
     cartItems.forEach(function (item, index) {
     // $.each(cartItems, function(index, item) {
         let variants = item.selectedVariants || {};
-        let product_sku = item.name.toLowerCase();
-
-        let variantHTML = '';
-        // for (const [key, value] of Object.entries(variants)) {
-        //     if (value) {
-        //         variantHTML += `<p class="s-text">${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}</p>`;
-        //     }
-        // }
+        console.log("Log Line no 124",variants);
+        const { sku: variant_sku, variantSuffix } = getVariantSku(item);
+        const variantHTML = Object.entries(variants)
+            .filter(([, value]) => value)
+            .map(([key, value]) => {
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                return `${escapeCartHtml(label)}: ${escapeCartHtml(value)}`;
+            })
+            .join(' &middot; ');
 
         //  product is out of stock 
         
         //  sku accoring to variant && product type 
-        let variant_sku = product_sku;
-        if(item.productType==2){
-            variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
-        }
-        //  sku accoring to variant && product type
-        
         var is_out_stock = '';
         $.ajax({
             url: isOutOfStock,
@@ -171,7 +162,7 @@ function displayCartItems(notRequiredQtyAjaxClickonQtyBtn) {
             data: {
                 _token: $('input[name="_token"]').val(),
                 product_id: item.productId,
-                variant_sku: variant_sku,
+                variant_sku: variantSuffix,
             },
             success: function (response) {
                 console.log(' is out od stock response :  ', response);
@@ -302,6 +293,7 @@ function displayCartItems(notRequiredQtyAjaxClickonQtyBtn) {
                             </svg>
                         </a>
                         <h3 class="mt-10 mb-30">${item.name}</h3>
+                        ${variantHTML ? `<p class="cart-selected-variants">${variantHTML}</p>` : ''}
                         <div class="quantity-cart-box d-flex align-items-center mb-10">
                             <div class="quantity">
                                 <div class="pro-qty">
@@ -493,7 +485,21 @@ function priceCalculation() {
     } else if (taxOption == 'exclusive') {
         taxableAmount = grandTotal;
     }
-    let finalAmount = grandTotal;
+    const orderTotals = calculateCartTotals(cartItems);
+    let finalAmount = $('#productListContainer').length
+        ? orderTotals.finalAmount
+        : grandTotal;
+    if ($('#productListContainer').length) {
+        $('.finalAmount').closest('tr').find('td:first').text(
+            orderTotals.pendingAmount > 0 ? '50% deposit due now' : 'Cart total'
+        );
+        const $paymentNote = $('#made-to-order-payment-note');
+        if (orderTotals.pendingAmount > 0) {
+            $paymentNote.text(`Pay ₹${orderTotals.finalAmount.toFixed(2)} now. The remaining ₹${orderTotals.pendingAmount.toFixed(2)} is due when your order ships.`).show();
+        } else {
+            $paymentNote.hide().empty();
+        }
+    }
     // Update Summary
     if (totalMrp > 0) {
         $("#totalMrp").html(`₹${Math.floor(totalMrp)}`).show();
@@ -622,15 +628,11 @@ function displayWishlistItem() {
 $(document).off('click', '.addToNewQtyBtn, .addToDecQtyBtn').on('click', '.addToNewQtyBtn, .addToDecQtyBtn', function (e) {
     e.preventDefault();
     var input = $(this).closest('.input-increment').find('.quantityInputs');
-    var randomId = input.data('randomid');
     var cartItems = JSON.parse(localStorage.getItem('cartItems')) || [];
+    var existingItemIndex = parseInt($(this).closest('.cart-lists').data('index'), 10);
 
-    var existingItemIndex = cartItems.findIndex(function (item) {
-        return item.randomId == randomId;
-    });
-
-    if (existingItemIndex > -1) {
-        var currentQty = parseInt(cartItems[existingItemIndex].quantity);
+    if (Number.isInteger(existingItemIndex) && cartItems[existingItemIndex]) {
+        var currentQty = parseInt(cartItems[existingItemIndex].quantity, 10) || 1;
         var minQty = parseInt(input.attr('min')) || 1;
         var maxQty = parseInt(input.attr('max')) || 10;
 
@@ -645,6 +647,9 @@ $(document).off('click', '.addToNewQtyBtn, .addToDecQtyBtn').on('click', '.addTo
         cartItems[existingItemIndex].quantity = currentQty;
         isLoginUser(cartItems[existingItemIndex].productId, currentQty, cartItems[existingItemIndex].selectedVariants);
         cartItems[existingItemIndex].total = parseFloat(cartItems[existingItemIndex].price) * currentQty;
+    } else {
+        console.error('Unable to update cart quantity: cart item not found.');
+        return;
     }
 
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -754,4 +759,3 @@ function getCoupon() {
         }
     });
 }
-
