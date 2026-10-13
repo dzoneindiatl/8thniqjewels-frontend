@@ -24,6 +24,9 @@ class ShopController extends Controller
 {
     public function index(Request $request, $categorySlug = null, $subCategorySlug = null, $childCategorySlug = null)
     {
+        $colorArr = $request->input('colorArr', []);
+        $sizeArr = $request->input('sizeArr', []);
+
         $DB = Product::with(['ProductVariantCombination', 'productVariants.variantValues.variant_value'])->where('is_deleted', 0)->where('is_active', 1);
         $categoriesData = Category::whereNull('parent_id')->where('is_deleted', 0)->where('is_active', 1)->get();
 
@@ -102,9 +105,9 @@ class ShopController extends Controller
 
         // Return view
         if ($request->ajax()) {
-            return view("front.modules.shop.load_more_data", compact('results', 'totalResults'));
+            return view("front.modules.shop.load_more_data", compact('results', 'totalResults', 'colorArr', 'sizeArr'));
         } else {
-            return view("front.modules.shop.index", compact('results', 'categoriesData', 'totalResults', 'categorySlug', 'subCategorySlug', 'childCategorySlug'));
+            return view("front.modules.shop.index", compact('results', 'categoriesData', 'totalResults', 'categorySlug', 'subCategorySlug', 'childCategorySlug', 'colorArr', 'sizeArr'));
         }
     }
 

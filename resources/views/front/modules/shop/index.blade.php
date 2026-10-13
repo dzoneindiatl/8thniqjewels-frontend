@@ -1,6 +1,11 @@
 @extends('front.layouts.app')
 @section('content')
 
+    @php
+        $colorArr = $colorArr ?? [];
+        $sizeArr = $sizeArr ?? [];
+    @endphp
+
     <style>
         .main-menu ul li a {
             color: #000;
@@ -36,6 +41,78 @@
 
         .product-item .wishlist.wishlist-visible {
             display: block;
+        }
+
+        .empty-products-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 340px;
+            width: 100%;
+            padding: 20px 0;
+        }
+
+        .empty-products-card {
+            width: min(100%, 560px);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #e8ddd0;
+            border-radius: 20px;
+            box-shadow: 0 12px 30px rgba(28, 20, 15, 0.06);
+            text-align: center;
+            padding: 42px 30px;
+        }
+
+        .empty-products-icon {
+            width: 88px;
+            height: 88px;
+            margin: 0 auto 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f8efe7 0%, #f2e1d0 100%);
+            color: #b78d5c;
+        }
+
+        .empty-products-card h4 {
+            margin: 0 0 10px;
+            font-size: 2rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #1d1d1b;
+            font-family: 'Times New Roman', serif;
+        }
+
+        .empty-products-card p {
+            margin: 0;
+            color: #6d625d;
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        .empty-products-actions {
+            margin-top: 22px;
+        }
+
+        .empty-products-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 24px;
+            border-radius: 999px;
+            background: #111111;
+            color: #fff;
+            font-size: 0.88rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            transition: all 0.25s ease;
+            text-decoration: none;
+        }
+
+        .empty-products-button:hover {
+            background: #b78d5c;
+            color: #fff;
+            text-decoration: none;
         }
     </style>
 
@@ -280,13 +357,12 @@
                             <!-- shop product top wrap start -->
 
                             <!-- product view mode wrapper start -->
-                            <div class="shop-product-wrap grid row">
+                            <div class="shop-product-wrap grid row" data-empty-state-url="{{ route('front-shop.index') }}">
                                 @php
                                     $filteredColors = [];
                                     $i = 0;
                                 @endphp
-                                @if($results->isNotEmpty())
-                                    @foreach($results as $product)
+                                @forelse($results as $product)
                                         @php
                                             $activeVarientID = 0;
                                             $firstImage = '';
@@ -373,8 +449,27 @@
                                             </div>
                                             <!-- product grid item end -->
                                         </div>
-                                    @endforeach
-                                @endif
+                                @empty
+                                    <div class="col-12">
+                                        <div class="empty-products-wrap">
+                                            <div class="empty-products-card">
+                                                <div class="empty-products-icon" aria-hidden="true">
+                                                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <path d="M3 7.5C3 6.67 3.67 6 4.5 6H19.5C20.33 6 21 6.67 21 7.5V18.5C21 19.33 20.33 20 19.5 20H4.5C3.67 20 3 19.33 3 18.5V7.5Z" stroke="currentColor" stroke-width="1.6"/>
+                                                        <path d="M8 10H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                                        <path d="M9 14H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                                        <path d="M7.5 6L9 3.5H15L16.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    </svg>
+                                                </div>
+                                                <h4>No products found</h4>
+                                                <p>Try a different search term or clear your filters to explore more pieces from our collection.</p>
+                                                <div class="empty-products-actions">
+                                                    <a href="{{ route('front-shop.index') }}" class="empty-products-button">Clear filters</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforelse
 
 
                             </div>
@@ -426,6 +521,7 @@
         (() => {
             const loader = document.getElementById('product-load-more');
             const productGrid = document.querySelector('.shop-product-wrap');
+            const emptyStateUrl = productGrid?.dataset.emptyStateUrl || '/shop';
             const searchInput = document.getElementById('searchlist');
             const sortSelect = document.getElementById('product-sort');
             const categoryFilters = document.querySelectorAll('[data-category-filter]');
@@ -441,6 +537,28 @@
             let searchRequestId = 0;
             let searchController;
             let observer = null;
+
+            const emptyStateHtml = `
+                <div class="col-12">
+                    <div class="empty-products-wrap">
+                        <div class="empty-products-card">
+                            <div class="empty-products-icon" aria-hidden="true">
+                                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 7.5C3 6.67 3.67 6 4.5 6H19.5C20.33 6 21 6.67 21 7.5V18.5C21 19.33 20.33 20 19.5 20H4.5C3.67 20 3 19.33 3 18.5V7.5Z" stroke="currentColor" stroke-width="1.6"/>
+                                    <path d="M8 10H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                    <path d="M9 14H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                    <path d="M7.5 6L9 3.5H15L16.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <h4>No products found</h4>
+                            <p>Try a different search term or clear your filters to explore more pieces from our collection.</p>
+                            <div class="empty-products-actions">
+                                <a href="${emptyStateUrl}" class="empty-products-button">Clear filters</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             const refreshProducts = async (sortBy = sortSelect?.value || '') => {
                 const requestId = ++searchRequestId;
@@ -492,7 +610,7 @@
                         return;
                     }
 
-                    productGrid.innerHTML = data.html || '<div class="col-12 text-center py-5">No products found</div>';
+                    productGrid.innerHTML = data.html || emptyStateHtml;
                     loader.dataset.nextUrl = data.nextUrl || '';
                     loader.hidden = !loader.dataset.nextUrl;
                     window.history.replaceState({}, '', url.toString());
