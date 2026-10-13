@@ -248,7 +248,6 @@ $.ajaxSetup({
 var totalShippingCharge = 0;
 $('#pay_now').off('click').on('click', function (e) { 
     let that = $(this);
-    that.prop('disabled', true).text('Please wait...');
     $('.pay_error').html('');
     $('.pay_success').html('');
 
@@ -257,6 +256,11 @@ $('#pay_now').off('click').on('click', function (e) {
     if (parseInt(cartItems.length) === 0) { 
         $('#pay_now').remove();
         $('#shoopping_continue').show();
+        return false;
+    }
+
+    if (!$('.payment_type:checked').length && !$('#wallet').is(':checked')) {
+        $('.pay_error').html('Please select a payment method.');
         return false;
     }
 
@@ -298,15 +302,7 @@ $('#pay_now').off('click').on('click', function (e) {
     var isQuantity = true;
     cartItems.forEach(function (item) {
         // get variant color and size combo exact qty
-        let product_sku = item.sku.toLowerCase();
-        let variants = item.selectedVariants || {};
-
-        //  sku accoring to variant && product type 
-        let product_selected_variant_sku = product_sku;
-        if(item.productType==2){
-            product_selected_variant_sku = product_sku + '_' + variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
-        }
-        //  sku accoring to variant && product type
+        const { sku: product_selected_variant_sku } = getVariantSku(item);
 
         var getExactVariantComboQty = 0;
         const originalHtmlMinus = $(".addToDecQtyBtn").html();
@@ -359,7 +355,9 @@ $('#pay_now').off('click').on('click', function (e) {
 
     console.log( 'calculate cart : ', cartItems);
     var totals = calculateCartTotals(cartItems);
+    var fullOrderTotal = totals.fullOrderTotal;
     var subTotal = totals.finalAmount;
+    var wallet_amount = 0;
     
     // COD order should be less than 500 validation
     if($('[id="cash"]:checked').val() =='cod' && subTotal > codMaxLimit){
@@ -418,12 +416,11 @@ $('#pay_now').off('click').on('click', function (e) {
         console.log('walletBalance  : ', walletBalance);
        
         // var subTotal = parseFloat($('.finalAmount').text().replace(/[^\d.]/g, ''));
-        var wallet_amount = 0;
         if (walletCheckbox?.checked) {
             if (parseFloat(walletBalance) >= (subTotal)) {
                 wallet_amount = subTotal;
                 payment_type = "wallet";
-                // subTotal = 0;
+                subTotal = 0;
             } else if (payment_type === "razorpay") {
                 wallet_amount = walletBalance;
                 subTotal = subTotal - walletBalance;
@@ -444,12 +441,14 @@ $('#pay_now').off('click').on('click', function (e) {
         coupon_id: localStorage.getItem('coupon_id'),
         coupon_discount: parseFloat(localStorage.getItem('coupon_discount')) || 0,
         wallet_amount: wallet_amount,
+        order_total: fullOrderTotal,
+        pending_amount: totals.pendingAmount,
         billing_id: billing_id,
         shipping_id: shipping_id,
         shippingcharge: totalShippingCharge,
     };
     // console.log('postData : ', postData); return false;
-    that.prop('disabled', false).text('Pay Now');
+    that.prop('disabled', true).text('Please wait...');
     var url = window.location.origin + "/place-order";
     $.ajax({
         type: "POST",
@@ -653,9 +652,7 @@ function renderCart() {
     var cartOutOfStock = [];
     var cartAllItems = JSON.parse(localStorage.getItem('cartItems')) || [];
     cartAllItems.forEach(function (item, index) {
-        let variants = item.selectedVariants || {};
         //  product is out of stock 
-        // let variant_sku = variants.color.toLowerCase() + '_' + variants.size.toLowerCase();
         
         $.ajax({
             url: isOutOfStock,
@@ -716,24 +713,11 @@ function renderCart() {
         qty = item.quantity;
         if(item.instock==0){
             $('.codPaymentDiv').hide();
-            sellingPrice = item.sellingPrice * (50 /100);
-        } else {
-            sellingPrice = item.sellingPrice;
         }
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
-        } else {
-            itemPrice = item.price;
-        }
-        
-        
+        sellingPrice = item.sellingPrice;
+        itemPrice = item.price;
         totalMrp += itemPrice * item.quantity;
-        // if (item.discountType == "flat") {
-        //     totalDiscount += parseInt(item.discountAmount);
-        // } else if (item.discountType == "percentage") {
-        //     totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
-        // }
-        totalDiscount = (itemPrice * item.quantity) - (sellingPrice * item.quantity);
+        totalDiscount += (itemPrice - sellingPrice) * item.quantity;
 
         taxOption = item.tax_option;
         totalTaxPrice += item.tax_price;
@@ -772,7 +756,11 @@ function renderCart() {
     }
 
     console.log(totalShippingCharge);
-    let finalAmount = grandTotal + totalShippingCharge;
+    const orderTotals = calculateCartTotals(cartItems);
+    let finalAmount = orderTotals.finalAmount;
+    $('.finalAmount').closest('tr').find('td:first').text(
+        orderTotals.pendingAmount > 0 ? '50% deposit due now' : 'Cart total'
+    );
     // Update Summary
     
     // Maanage COD checkbox text value 
@@ -833,41 +821,51 @@ function calculateCartTotals(cartItems) {
     let totalDiscount = 0;
     let totalTaxPrice = 0;
     let taxOption = 'inclusive';
+    let fullProductTotal = 0;
+    let depositProductTotal = 0;
+    let makeToOrderPending = 0;
 
     cartItems.forEach(function (item) {
+        const quantity = Number(item.quantity) || 0;
+        const itemPrice = Number(item.price) || 0;
+        const sellingPrice = Number(item.sellingPrice) || 0;
+        const itemTotal = sellingPrice * quantity;
+        const isMakeToOrder = Number(item.instock) === 0;
 
-        if(item.instock==0){
-            itemPrice = item.price * (50 /100);
+        totalMrp += itemPrice * quantity;
+        totalDiscount += (itemPrice - sellingPrice) * quantity;
+        fullProductTotal += itemTotal;
+        if (isMakeToOrder) {
+            depositProductTotal += itemTotal / 2;
+            makeToOrderPending += itemTotal / 2;
         } else {
-            itemPrice = item.price;
-        }
-
-        totalMrp += itemPrice * item.quantity;
-
-        if (item.discountType == "flat") {
-            totalDiscount += parseInt(item.discountAmount);
-        } 
-        else if (item.discountType == "percentage") {
-            totalDiscount += ((parseInt(item.discountAmount) * totalMrp) / 100);
+            depositProductTotal += itemTotal;
         }
 
         taxOption = item.tax_option;
-        totalTaxPrice += item.tax_price;
+        const itemTax = Number(item.tax_price) || 0;
+        totalTaxPrice += itemTax;
+        if (taxOption === 'exclusive') {
+            depositProductTotal -= isMakeToOrder ? itemTax / 2 : 0;
+            depositProductTotal += itemTax;
+            makeToOrderPending += isMakeToOrder ? itemTax / 2 : 0;
+        }
     });
 
-    let subTotal = totalMrp - totalDiscount;
-
     let couponDiscount = parseFloat(localStorage.getItem('coupon_discount')) || 0;
-
+    let shippingCharge = Number(totalShippingCharge) || 0;
+    let exclusiveTax = taxOption === 'exclusive' ? totalTaxPrice : 0;
+    let fullOrderTotal = fullProductTotal + exclusiveTax + shippingCharge - couponDiscount;
+    let hasMakeToOrderItem = cartItems.some(item => Number(item.instock) === 0);
+    let dueNowTotal = hasMakeToOrderItem
+        ? depositProductTotal + shippingCharge - couponDiscount
+        : fullOrderTotal;
+    let pendingAmount = hasMakeToOrderItem
+        ? Math.max(0, fullOrderTotal - dueNowTotal)
+        : 0;
+    let subTotal = totalMrp - totalDiscount;
     let grandTotal = subTotal - couponDiscount;
-
-    let finalAmount;
-
-    if (taxOption == 'inclusive') {
-        finalAmount = grandTotal + totalShippingCharge;
-    } else {
-        finalAmount = grandTotal + totalTaxPrice + totalShippingCharge;
-    }
+    let finalAmount = dueNowTotal;
 
     return {
         totalMrp,
@@ -877,7 +875,10 @@ function calculateCartTotals(cartItems) {
         grandTotal,
         totalTaxPrice,
         taxOption,
-        finalAmount
+        finalAmount,
+        fullOrderTotal,
+        pendingAmount,
+        hasMakeToOrderItem
     };
 }
 
